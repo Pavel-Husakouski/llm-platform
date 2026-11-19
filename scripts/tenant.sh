@@ -57,7 +57,12 @@ rollback() {
       || echo "не удалось удалить проект Langfuse $project_id, удалите его в UI" >&2
   fi
 }
-trap 'status=$?; [ $status -eq 0 ] || rollback; rm -rf "$tmp"' EXIT
+on_exit() {
+  local status=$?
+  [ "$status" -eq 0 ] || rollback
+  rm -rf "$tmp"
+}
+trap on_exit EXIT
 
 # litellm <path> <body-file>: POST в admin API LiteLLM с master key, ответ в stdout.
 printf 'authorization: Bearer %s\n' "$(get llm litellm LITELLM_MASTER_KEY)" > "$tmp/litellm-auth"
