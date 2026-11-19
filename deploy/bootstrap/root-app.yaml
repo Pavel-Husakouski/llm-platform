@@ -1,0 +1,26 @@
+# Корневой Application платформы (app-of-apps): рендерит chart deploy/apps, тот создаёт
+# Application на каждый компонент. make up применяет этот файл и подставляет ветку в
+# targetRevision. Имя не root: тенанты кладут свои root-app в тот же Argo CD.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: llm-platform
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Pavel-Husakouski/llm-platform.git
+    targetRevision: main
+    path: deploy/apps
+    helm:
+      valuesObject:
+        targetRevision: main
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
