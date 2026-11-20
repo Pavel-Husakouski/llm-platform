@@ -5,6 +5,7 @@ targetRevision: main
 # Версии сторонних charts фиксированы: обновление — отдельный коммит. Langfuse обновлять
 # осторожно: make tenant ходит во внутренний tRPC UI (см. SPEC.md).
 charts:
+  # appVersion v1.10.1: вместе с chart обновить ROLLOUTS_PLUGIN в Makefile (make tools).
   argoRollouts: 2.43.8
   prometheus: 29.40.0
   langfuse: 2.2.4

@@ -8,6 +8,11 @@ KIND_CONFIG    := deploy/kind/cluster.yaml
 KIND_IMAGE     := kindest/node:v1.37.0
 ARGOCD_CHART   := 10.11.6
 ARGOCD_REPO    := https://argoproj.github.io/argo-helm
+# kubectl-плагин Argo Rollouts (make tools) = appVersion chart charts.argoRollouts из
+# deploy/apps/values.yaml: обновляются вместе, make tools сверяет с контроллером в кластере.
+ROLLOUTS_PLUGIN := v1.10.1
+# Куда make tools кладёт бинарники, каталог должен быть в PATH.
+TOOLS_DIR      ?= $(HOME)/.local/bin
 # Ветка, из которой Argo CD берёт deploy/: make up REVISION=feature-x
 REVISION       ?= main
 WAIT_TIMEOUT   ?= 900
@@ -22,7 +27,7 @@ MODELS         ?= deepseek-flash
 KUBECTL := kubectl --context kind-$(CLUSTER)
 HELM    := helm --kube-context kind-$(CLUSTER)
 
-.PHONY: up down cluster secret argocd root wait status tenant llm-budget argocd-password \
+.PHONY: up down cluster secret argocd root wait status tenant llm-budget tools argocd-password \
   langfuse-password litellm-password clickhouse-password
 
 up: cluster secret argocd root wait status
@@ -86,6 +91,10 @@ llm-budget:
 	@test -n "$(KEY)" || { echo "укажите KEY=<alias тенанта>" >&2; exit 1; }
 	@test -n "$(BUDGET)" || { echo "укажите BUDGET=<usd>" >&2; exit 1; }
 	@KUBECTL="$(KUBECTL)" scripts/llm-budget.sh '$(KEY)' '$(BUDGET)'
+
+# kubectl-плагин Argo Rollouts версии контроллера: get, promote, abort, retry выкатки тенанта.
+tools:
+	@KUBECTL="$(KUBECTL)" scripts/rollouts-plugin.sh '$(ROLLOUTS_PLUGIN)' '$(TOOLS_DIR)'
 
 argocd-password:
 	@$(KUBECTL) -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' \

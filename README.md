@@ -31,6 +31,17 @@ make down                     # удаляет кластер целиком, в
 Порты 13000–13009 на хосте проброшены на NodePort 30000–30009: они зарезервированы под API
 тенантов, потому что порты kind задаются только при создании кластера.
 
+Плагин kubectl для выкаток тенантов (`kubectl argo rollouts get/promote/abort/retry`):
+
+```sh
+make tools                    # kubectl-argo-rollouts в ~/.local/bin, TOOLS_DIR=... — в другой каталог
+```
+
+Версия плагина (`ROLLOUTS_PLUGIN` в Makefile) равна версии контроллера, то есть appVersion
+chart `argoRollouts` в `deploy/apps/values.yaml`, и обновляется вместе с ним. `make tools`
+сверяет бинарник с sha256 из релиза, повторно не скачивает и падает, если версия контроллера в
+кластере другая.
+
 ## Тенанты
 
 ```sh
