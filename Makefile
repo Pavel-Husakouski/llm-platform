@@ -122,7 +122,7 @@ argocd:
 
 # Подставляет ветку и адрес Langfuse, по которому браузер открывает UI (NEXTAUTH_URL).
 root:
-	sed -e 's/targetRevision: main/targetRevision: $(REVISION)/' \
+	sed -e 's#targetRevision: main#targetRevision: $(REVISION)#' \
 	  -e 's#langfuseURL: .*#langfuseURL: $(LANGFUSE_URL)#' deploy/bootstrap/root-app.yaml \
 	  | $(KUBECTL) apply -f -
 
