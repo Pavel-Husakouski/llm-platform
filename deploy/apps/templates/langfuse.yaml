@@ -25,7 +25,7 @@ spec:
           encryptionKey:
             secretKeyRef: { name: langfuse-keys, key: encryption-key }
           nextauth:
-            url: http://localhost:13300
+            url: {{ .Values.langfuseURL }}
             secret:
               secretKeyRef: { name: langfuse-keys, key: nextauth-secret }
           features:

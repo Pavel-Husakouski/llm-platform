@@ -1,5 +1,5 @@
 # ClickHouse для Langfuse: трейсы, observations и scores. Один узел без Keeper и operator:
-# chart Langfuse ставит ClickHouse через ClickHouse operator с cert-manager, для kind это
+# chart Langfuse ставит ClickHouse через ClickHouse operator с cert-manager, для стенда это
 # три лишних компонента. Langfuse работает с ним в режиме CLICKHOUSE_CLUSTER_ENABLED=false.
 #
 # Профиль ClickHouse под один узел стенда. По умолчанию ClickHouse пишет в system.* метрики
@@ -83,7 +83,7 @@ metadata:
   labels:
     app.kubernetes.io/name: clickhouse
 spec:
-  # NodePort: HTTP и play на localhost:18123, clickhouse-client на localhost:19000
+  # NodePort: HTTP и play на :30123, clickhouse-client на :30900 (в kind localhost:18123, :19000)
   type: NodePort
   selector:
     app.kubernetes.io/name: clickhouse

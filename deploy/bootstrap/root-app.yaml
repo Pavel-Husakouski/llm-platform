@@ -1,6 +1,6 @@
 # Корневой Application платформы (app-of-apps): рендерит chart deploy/apps, тот создаёт
 # Application на каждый компонент. make up применяет этот файл и подставляет ветку в
-# targetRevision. Имя не root: тенанты кладут свои root-app в тот же Argo CD.
+# targetRevision и адрес Langfuse для TARGET в langfuseURL. Имя не root: тенанты кладут свои root-app в тот же Argo CD.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -17,6 +17,7 @@ spec:
     helm:
       valuesObject:
         targetRevision: main
+        langfuseURL: http://localhost:13300
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

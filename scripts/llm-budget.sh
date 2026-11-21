@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Меняет бюджет virtual key тенанта в LiteLLM: llm-budget.sh <alias> <usd>. BUDGET=0 —
 # проверить отказ по бюджету (вызовы тенанта получат 422), прежнее значение — вернуть.
-# Ключ берётся из Secret llm/tenant-<alias>, запрос идёт с хоста через NodePort.
+# Ключ берётся из Secret llm/tenant-<alias>, запрос идёт снаружи кластера через NodePort
+# (LITELLM_URL задаёт make).
 set -euo pipefail
 
 alias=${1:?usage: llm-budget.sh <alias> <usd>}
