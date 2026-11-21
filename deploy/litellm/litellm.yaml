@@ -35,7 +35,7 @@ metadata:
   labels:
     app.kubernetes.io/name: litellm
 spec:
-  # NodePort: UI на localhost:14000 через extraPortMappings kind
+  # NodePort: UI на <HOST>:30400 в k3s, на localhost:14000 в kind (extraPortMappings)
   type: NodePort
   selector:
     app.kubernetes.io/name: litellm

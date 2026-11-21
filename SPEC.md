@@ -11,6 +11,10 @@
 | `langfuse`      | `langfuse`      | chart langfuse, внешний ClickHouse         |
 | `litellm`       | `llm`           | `deploy/litellm`, свой Postgres            |
 
+Кластер — k3s на выделенном хосте (`TARGET=k3s`, по умолчанию) или локальный kind
+(`TARGET=kind`). Манифесты одинаковы, различаются только адреса NodePort снаружи и
+`langfuseURL`, который подставляет `make root`.
+
 Argo CD ставит `make argocd` из helm (`deploy/bootstrap/argocd-values.yaml`), всё остальное
 синхронизируется из git. Argo Rollouts (CRD) и Prometheus (scrape подов по аннотациям
 `prometheus.io/*`) работают на весь кластер и доступны тенантам.
@@ -39,8 +43,8 @@ Root-app платформы называется `llm-platform`, не `root`: т
 - Score и свои трейсы тенант пишет теми же ключами из `platform-llm`, в тот же проект.
 - Бюджет ключа — `max_budget` на 30 дней (`budget_duration: 30d`). Сверх бюджета LiteLLM
   отвечает ошибкой, spend виден в LiteLLM UI.
-- Для API тенанта зарезервированы NodePort 30000–30009 (на хосте 13000–13009). Тенант
-  выбирает свободный порт сам.
+- Для API тенанта зарезервированы NodePort 30000–30009 (в k3s на `HOST:3000x`, в kind на
+  `localhost:1300x`). Тенант выбирает свободный порт сам.
 
 ## Секреты
 
@@ -58,8 +62,9 @@ Root-app платформы называется `llm-platform`, не `root`: т
 
 ## make tenant
 
-`scripts/tenant.sh` работает с хоста через NodePort: LiteLLM на `localhost:14000` (master
-key), Langfuse на `localhost:13300` (пользователь init).
+`scripts/tenant.sh` работает снаружи кластера через NodePort: LiteLLM (master key) и Langfuse
+(пользователь init) по адресам `LITELLM_URL` и `LANGFUSE_URL`, которые задаёт make по
+`TARGET`.
 
 1. Если есть Secret `llm/tenant-<name>`, проект и ключ не создаются, только копируется
    `platform-llm`. Так `make tenant` идемпотентна.
@@ -75,3 +80,20 @@ Org API keys и `POST /api/public/projects` в OSS-версии Langfuse нед�
 создаются через tRPC — внутренний API UI. Он может поменяться между версиями: версия chart
 Langfuse зафиксирована, скрипт проверяет ответы и падает с понятной ошибкой. После обновления
 Langfuse прогнать `make tenant` на тестовом тенанте.
+
+## make tenant-delete
+
+`scripts/tenant-delete.sh` обратна `make tenant` и работает с теми же адресами. Без
+`CONFIRM=<name>` только печатает, что будет удалено.
+
+1. LiteLLM `POST /key/delete` с ключом из `llm/tenant-<name>`.
+2. Вход в Langfuse и tRPC `projects.delete`. Langfuse помечает проект удалённым, его трейсы
+   стирает worker асинхронно.
+3. Namespace тенанта удаляется целиком. Если это namespace платформы, удаляется только
+   `platform-llm`; если его делят несколько тенантов, он не трогается: `platform-llm` в нём
+   один на всех.
+4. Secret `llm/tenant-<name>`.
+
+После шагов 1 и 2 их поле (`LLM_API_KEY`, `LANGFUSE_PROJECT_ID`) удаляется из
+`llm/tenant-<name>`, поэтому повторный запуск после сбоя продолжает с невыполненного шага.
+Application тенанта в Argo CD скрипт не трогает.

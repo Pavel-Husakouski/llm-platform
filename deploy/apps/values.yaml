@@ -2,6 +2,10 @@
 repoURL: https://github.com/Pavel-Husakouski/llm-platform.git
 targetRevision: main
 
+# Адрес Langfuse UI в браузере (NEXTAUTH_URL): вход работает только по нему. make root
+# подставляет адрес для TARGET: http://<HOST>:30300 в k3s, http://localhost:13300 в kind.
+langfuseURL: http://localhost:13300
+
 # Версии сторонних charts фиксированы: обновление — отдельный коммит. Langfuse обновлять
 # осторожно: make tenant ходит во внутренний tRPC UI (см. SPEC.md).
 charts:

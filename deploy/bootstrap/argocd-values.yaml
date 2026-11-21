@@ -8,7 +8,7 @@ notifications:
 
 configs:
   params:
-    # TLS не нужен: UI доступен только на 127.0.0.1
+    # Без TLS: стенд в домашней сети (k3s на хосте в LAN или kind на 127.0.0.1)
     server.insecure: true
   cm:
     # Health для Application: без него sync waves в app-of-apps не ждут готовности дочерних
