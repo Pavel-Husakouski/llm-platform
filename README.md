@@ -2,7 +2,7 @@
 
 Общая LLM-инфраструктура для локальных проектов в k3s на выделенном хосте (или в локальном
 kind): LiteLLM (шлюз к провайдерам, virtual keys с бюджетом), Langfuse (трейсы и score) на
-своём ClickHouse, Prometheus и Argo Rollouts.
+общем ClickHouse (он же для баз проектов), Prometheus, Grafana и Argo Rollouts.
 Всё ставит Argo CD из этого репо. Проекты подключаются как тенанты: каждый получает свой
 virtual key и свой проект Langfuse, а свои Application кладёт в тот же Argo CD.
 
@@ -18,7 +18,7 @@ virtual key и свой проект Langfuse, а свои Application клад�
 ```sh
 make k3s-install              # один раз, сам: ssh -t на хост, спросит пароль sudo
 make kubeconfig               # context llm-platform в ~/.kube/config (старый — в .bak)
-export DEEPSEEK_API_KEY=...   # только из окружения, .env не читается
+export DEEPSEEK_API_KEY=...   # только из окружения, .env не читается; без него make secret оставляет прежний
 make up                       # проверка кластера, секреты, Argo CD, root-app, ожидание
 make status
 make k3s-uninstall            # удаляет k3s с хоста вместе со всеми данными
@@ -32,6 +32,7 @@ TARGET=kind` удаляет kind-кластер).
 |------------|---------------------------------|-------------------------------------|-----------------------------------------------|
 | Argo CD    | http://HOST:30080               | http://localhost:18080              | admin, `make argocd-password`                 |
 | Prometheus | http://HOST:30090               | http://localhost:19090              |                                               |
+| Grafana    | http://HOST:30030               | http://localhost:13030              | admin, `make grafana-password`                |
 | Langfuse   | http://HOST:30300               | http://localhost:13300              | admin@llm-platform.local, `make langfuse-password` |
 | LiteLLM    | http://HOST:30400/ui            | http://localhost:14000/ui           | admin, `make litellm-password` (master key)   |
 | ClickHouse | http://HOST:30123/play, :30900  | http://localhost:18123/play, :19000 | clickhouse, `make clickhouse-password`        |
@@ -80,6 +81,36 @@ make tenant-delete NAME=agent CONFIRM=agent   # удаляет
 Удаляются ключ LiteLLM, проект Langfuse с трейсами, namespace тенанта со всем содержимым и
 Secret `llm/tenant-<name>`. Application тенанта в Argo CD удалите заранее, иначе Argo CD
 создаст namespace заново.
+
+## ClickHouse и Grafana
+
+ClickHouse общий: в базе `default` — данные Langfuse, рядом базы проектов. Пользователи, права и
+квоты описаны в `deploy/clickhouse/clickhouse.yaml` (`platform-users.xml`), пароли — в Secret
+`langfuse/clickhouse-users`, их создаёт `make secret`.
+
+| Пользователь    | Права                                   | Пароль                                           |
+|-----------------|-----------------------------------------|--------------------------------------------------|
+| `clickhouse`    | всё (им ходит Langfuse)                 | `make clickhouse-password`                       |
+| `layers_writer` | CREATE TABLE, INSERT, SELECT `layers.*` | `make clickhouse-password CH_USER=layers_writer` |
+| `grafana_ro`    | SELECT `layers.*`, лимиты и квота       | `make clickhouse-password CH_USER=grafana_ro`    |
+
+Grafana берёт источники из provisioning: `uid: prometheus` и `uid: clickhouse` (пользователь
+`grafana_ro`, база по умолчанию `layers`). Дашборды проект держит у себя и заливает по API
+токеном service account:
+
+```sh
+make grafana-token NAME=layers   # папка layers, service account с Edit только на неё, токен
+curl -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  http://HOST:30030/api/dashboards/db \
+  -d '{"dashboard": {...}, "folderUid": "layers", "overwrite": true}'
+```
+
+Токен хранится в `monitoring/grafana-token-<name>`, повторный запуск печатает его же.
+
+Новый проект в ClickHouse: пользователь `<name>_writer` в `platform-users.xml`, ключ в
+`scripts/platform-secrets.sh` (`passwords langfuse clickhouse-users ...`), база в Job
+`clickhouse-databases`, поднять `config/revision`, затем `make secret` и `make tenant` — тот
+положит Secret `platform-clickhouse` в namespace проекта.
 
 ## Модели
 

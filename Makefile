@@ -24,7 +24,7 @@ TOOLS_DIR      ?= $(HOME)/.local/bin
 REVISION       ?= main
 WAIT_TIMEOUT   ?= 900
 # Application платформы: make wait не ждёт Application тенантов.
-APPS           := llm-platform argo-rollouts prometheus clickhouse langfuse litellm
+APPS           := llm-platform argo-rollouts prometheus clickhouse langfuse litellm grafana
 
 # make tenant NAME=agent NS=agent BUDGET=1 MODELS=deepseek-flash
 NS             ?= $(NAME)
@@ -38,6 +38,7 @@ CONTEXT        := $(CLUSTER)
 URL            := http://$(HOST)
 ARGOCD_URL     := $(URL):30080
 PROMETHEUS_URL := $(URL):30090
+GRAFANA_URL    := $(URL):30030
 LANGFUSE_URL   := $(URL):30300
 LITELLM_URL    := $(URL):30400
 CLICKHOUSE_URL := $(URL):30123
@@ -48,6 +49,7 @@ CONTEXT        := kind-$(CLUSTER)
 URL            := http://localhost
 ARGOCD_URL     := $(URL):18080
 PROMETHEUS_URL := $(URL):19090
+GRAFANA_URL    := $(URL):13030
 LANGFUSE_URL   := $(URL):13300
 LITELLM_URL    := $(URL):14000
 CLICKHOUSE_URL := $(URL):18123
@@ -61,8 +63,8 @@ KUBECTL := kubectl --context $(CONTEXT)
 HELM    := helm --kube-context $(CONTEXT)
 
 .PHONY: up down cluster secret argocd root wait status tenant tenant-delete llm-budget tools \
-  argocd-password langfuse-password litellm-password clickhouse-password k3s-install \
-  k3s-uninstall kubeconfig
+  argocd-password langfuse-password litellm-password clickhouse-password grafana-password \
+  grafana-token k3s-install k3s-uninstall kubeconfig
 
 up: cluster secret argocd root wait status
 
@@ -146,10 +148,12 @@ status:
 	@$(KUBECTL) -n argocd get applications
 	@$(KUBECTL) get pods -n llm
 	@$(KUBECTL) get pods -n langfuse
+	@$(KUBECTL) get pods -n monitoring
 	@echo "Argo CD UI: $(ARGOCD_URL) (admin, пароль: make argocd-password)"
 	@echo "Prometheus: $(PROMETHEUS_URL)"
 	@echo "Langfuse:   $(LANGFUSE_URL) (admin@llm-platform.local, make langfuse-password)"
 	@echo "LiteLLM:    $(LITELLM_URL)/ui (admin, make litellm-password)"
+	@echo "Grafana:    $(GRAFANA_URL) (admin, make grafana-password)"
 	@echo "ClickHouse: $(CLICKHOUSE_URL)/play, native $(CLICKHOUSE_TCP) (clickhouse, make clickhouse-password)"
 	@echo "Тенанты:    $(TENANT_PORTS)"
 
@@ -189,6 +193,21 @@ litellm-password:
 	@$(KUBECTL) -n llm get secret litellm \
 	  -o jsonpath='{.data.LITELLM_MASTER_KEY}' | base64 -d; echo
 
+# Без CH_USER — пароль администратора clickhouse (им ходит Langfuse), с CH_USER — пароль
+# пользователя из deploy/clickhouse: make clickhouse-password CH_USER=layers_writer
 clickhouse-password:
-	@$(KUBECTL) -n langfuse get secret langfuse-clickhouse-auth \
-	  -o jsonpath='{.data.password}' | base64 -d; echo
+	@if [ -z '$(CH_USER)' ]; then \
+	  $(KUBECTL) -n langfuse get secret langfuse-clickhouse-auth -o jsonpath='{.data.password}'; \
+	else \
+	  $(KUBECTL) -n langfuse get secret clickhouse-users -o jsonpath='{.data.$(CH_USER)}'; \
+	fi | base64 -d; echo
+
+grafana-password:
+	@$(KUBECTL) -n monitoring get secret grafana-admin \
+	  -o jsonpath='{.data.admin-password}' | base64 -d; echo
+
+# Токен service account Grafana для заливки дашбордов проекта в папку NAME:
+# make grafana-token NAME=layers. Повторный запуск печатает сохранённый токен.
+grafana-token:
+	@test -n "$(NAME)" || { echo "укажите NAME=<project>" >&2; exit 1; }
+	@KUBECTL="$(KUBECTL)" GRAFANA_URL=$(GRAFANA_URL) scripts/grafana-token.sh '$(NAME)'

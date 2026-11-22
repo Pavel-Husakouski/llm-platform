@@ -13,3 +13,7 @@ charts:
   argoRollouts: 2.43.8
   prometheus: 29.40.0
   langfuse: 2.2.4
+  # grafana-community/helm-charts: grafana/helm-charts больше не обновляется.
+  grafana: 14.4.0
+  # Плагин источника данных ClickHouse в Grafana.
+  grafanaClickhouse: 4.23.4

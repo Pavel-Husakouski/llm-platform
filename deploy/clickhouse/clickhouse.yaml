@@ -1,6 +1,12 @@
-# ClickHouse для Langfuse: трейсы, observations и scores. Один узел без Keeper и operator:
-# chart Langfuse ставит ClickHouse через ClickHouse operator с cert-manager, для стенда это
-# три лишних компонента. Langfuse работает с ним в режиме CLICKHOUSE_CLUSTER_ENABLED=false.
+# Общий ClickHouse платформы. В базе default — трейсы, observations и scores Langfuse, базы
+# тенантов (layers) — рядом. Живёт в namespace langfuse, потому что там его PVC с данными
+# Langfuse. Один узел без Keeper и operator: chart Langfuse ставит ClickHouse через ClickHouse
+# operator с cert-manager, для стенда это три лишних компонента. Langfuse работает с ним как с
+# внешним в режиме CLICKHOUSE_CLUSTER_ENABLED=false.
+#
+# Пользователи, права и квоты — в platform-users.xml ниже. Пароли — в Secret clickhouse-users
+# (создаёт make secret), ключ = имя пользователя; в под они попадают как env
+# CH_PASSWORD_<user>. Базы создаёт Job clickhouse-databases после каждого sync.
 #
 # Профиль ClickHouse под один узел стенда. По умолчанию ClickHouse пишет в system.* метрики
 # раз в секунду, сэмплы профайлера, свой лог и историю merge: в простое это ~60–100m CPU и
@@ -75,6 +81,64 @@ data:
         </default>
       </profiles>
     </clickhouse>
+  # Пользователи тенантов и Grafana. Новый пользователь: блок здесь, ключ в clickhouse-users
+  # (scripts/platform-secrets.sh), база в Job clickhouse-databases, затем поднять
+  # config/revision у StatefulSet: новая переменная окружения нужна в поде.
+  platform-users.xml: |
+    <clickhouse>
+      <profiles>
+        <!-- Только чтение для дашбордов. readonly=2: плагин Grafana передаёт настройки
+             запроса (max_execution_time = queryTimeout источника). Лимиты можно только
+             уменьшить, min 1 не даёт снять их нулём («без лимита»). -->
+        <grafana_ro>
+          <readonly>2</readonly>
+          <max_memory_usage>1000000000</max_memory_usage>
+          <max_execution_time>30</max_execution_time>
+          <max_concurrent_queries_for_user>4</max_concurrent_queries_for_user>
+          <constraints>
+            <readonly><const/></readonly>
+            <max_memory_usage><min>1</min><max>1000000000</max></max_memory_usage>
+            <max_execution_time><min>1</min><max>30</max></max_execution_time>
+            <max_concurrent_queries_for_user><const/></max_concurrent_queries_for_user>
+          </constraints>
+        </grafana_ro>
+      </profiles>
+      <quotas>
+        <!-- Потолок на час: дашборд с автообновлением раз в 10 с даёт ~360 запросов на панель. -->
+        <grafana_ro>
+          <interval>
+            <duration>3600</duration>
+            <queries>20000</queries>
+            <errors>0</errors>
+            <result_rows>0</result_rows>
+            <read_rows>0</read_rows>
+            <execution_time>3600</execution_time>
+          </interval>
+        </grafana_ro>
+      </quotas>
+      <users>
+        <!-- Проект layers пишет свои таблицы. ALTER и DROP не выданы: миграции схемы — через
+             администратора платформы. -->
+        <layers_writer>
+          <password from_env="CH_PASSWORD_layers_writer"/>
+          <networks><ip>::/0</ip></networks>
+          <profile>default</profile>
+          <quota>default</quota>
+          <grants>
+            <query>GRANT CREATE TABLE, INSERT, SELECT ON layers.*</query>
+          </grants>
+        </layers_writer>
+        <grafana_ro>
+          <password from_env="CH_PASSWORD_grafana_ro"/>
+          <networks><ip>::/0</ip></networks>
+          <profile>grafana_ro</profile>
+          <quota>grafana_ro</quota>
+          <grants>
+            <query>GRANT SELECT ON layers.*</query>
+          </grants>
+        </grafana_ro>
+      </users>
+    </clickhouse>
 ---
 apiVersion: v1
 kind: Service
@@ -83,7 +147,8 @@ metadata:
   labels:
     app.kubernetes.io/name: clickhouse
 spec:
-  # NodePort: HTTP и play на :30123, clickhouse-client на :30900 (в kind localhost:18123, :19000)
+  # NodePort: HTTP и play на :30123, clickhouse-client на :30900 (в kind localhost:18123, :19000).
+  # В кластере — http://clickhouse.langfuse:8123.
   type: NodePort
   selector:
     app.kubernetes.io/name: clickhouse
@@ -115,7 +180,7 @@ spec:
         app.kubernetes.io/name: clickhouse
       annotations:
         # subPath не обновляется на лету: после правки clickhouse-config поднять revision.
-        config/revision: "4"
+        config/revision: "6"
     spec:
       securityContext:
         fsGroup: 101
@@ -132,6 +197,11 @@ spec:
                   # Секреты создаёт make secret, в git их нет.
                   name: langfuse-clickhouse-auth
                   key: password
+          # Пароли пользователей из platform-users.xml: CH_PASSWORD_<user>.
+          envFrom:
+            - prefix: CH_PASSWORD_
+              secretRef:
+                name: clickhouse-users
           ports:
             - name: http
               containerPort: 8123
@@ -165,6 +235,9 @@ spec:
             - name: config
               mountPath: /etc/clickhouse-server/users.d/low-cpu.xml
               subPath: users-low-cpu.xml
+            - name: config
+              mountPath: /etc/clickhouse-server/users.d/platform-users.xml
+              subPath: platform-users.xml
       volumes:
         - name: config
           configMap:
@@ -177,3 +250,36 @@ spec:
         resources:
           requests:
             storage: 5Gi
+---
+# Базы тенантов: CREATE DATABASE из XML-конфига не задать, поэтому Job после каждого sync.
+# Идемпотентен, существующие базы не трогает.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: clickhouse-databases
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: create
+          image: clickhouse/clickhouse-server:26.8.36.3
+          command:
+            - clickhouse-client
+            - --host=clickhouse
+            - --user=clickhouse
+            - --query=CREATE DATABASE IF NOT EXISTS layers
+          env:
+            # clickhouse-client берёт пароль из CLICKHOUSE_PASSWORD
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: langfuse-clickhouse-auth
+                  key: password
+          resources:
+            requests: { cpu: 10m, memory: 64Mi }
+            limits: { memory: 256Mi }

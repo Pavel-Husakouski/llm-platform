@@ -3,7 +3,8 @@
 #   1. проект Langfuse <name> и его API-ключи (внутренний tRPC UI, см. SPEC.md);
 #   2. virtual key LiteLLM с alias <name>, бюджетом на 30 дней и metadata.logging: трейсы его
 #      вызовов уходят в проект тенанта;
-#   3. Secret platform-llm в namespace тенанта (контракт тенанта).
+#   3. Secret platform-llm в namespace тенанта (контракт тенанта) и platform-clickhouse, если у
+#      тенанта есть пользователь <name>_writer в общем ClickHouse (deploy/clickhouse).
 # Ключи тенанта хранятся в Secret llm/tenant-<name>. Если он уже есть, шаги 1–2 пропускаются
 # и только заново копируется platform-llm: повторный запуск ничего не пересоздаёт.
 # Работает снаружи кластера через NodePort: адреса LITELLM_URL и LANGFUSE_URL задаёт make
@@ -18,6 +19,7 @@ models=${4:?usage: tenant.sh <name> <namespace> <budget-usd> <model,...>}
 # Адреса, которые видят поды внутри кластера.
 LLM_BASE_URL=http://litellm.llm:4000
 LANGFUSE_HOST=http://langfuse-web.langfuse:3000
+CLICKHOUSE_URL=http://clickhouse.langfuse:8123
 
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -36,6 +38,17 @@ publish() {
     "LANGFUSE_HOST=$LANGFUSE_HOST" \
     "LANGFUSE_PUBLIC_KEY=$(get llm "tenant-$name" LANGFUSE_PUBLIC_KEY)" \
     "LANGFUSE_SECRET_KEY=$(get llm "tenant-$name" LANGFUSE_SECRET_KEY)"
+  # База <name> и пользователь <name>_writer описаны в deploy/clickhouse, пароль — в
+  # langfuse/clickhouse-users. Нет пользователя — нет и секрета.
+  local ch_password
+  ch_password=$(field langfuse clickhouse-users "${name}_writer" 2>/dev/null || true)
+  if [ -n "$ch_password" ]; then
+    apply "$ns" platform-clickhouse \
+      "CLICKHOUSE_URL=$CLICKHOUSE_URL" \
+      "CLICKHOUSE_DATABASE=$name" \
+      "CLICKHOUSE_USER=${name}_writer" \
+      "CLICKHOUSE_PASSWORD=$ch_password"
+  fi
 }
 
 if exists llm "tenant-$name"; then

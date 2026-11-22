@@ -1,4 +1,5 @@
-# ClickHouse для Langfuse: свои манифесты, поднимается раньше chart Langfuse (миграции на старте).
+# Общий ClickHouse платформы (Langfuse и тенанты): свои манифесты, поднимается раньше chart
+# Langfuse (миграции на старте). Namespace langfuse — там PVC с данными Langfuse.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -13,7 +14,7 @@ spec:
   source:
     repoURL: {{ .Values.repoURL }}
     targetRevision: {{ .Values.targetRevision }}
-    path: deploy/langfuse
+    path: deploy/clickhouse
   destination:
     server: https://kubernetes.default.svc
     namespace: langfuse

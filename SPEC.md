@@ -7,9 +7,10 @@
 | `llm-platform`  | `argocd`        | root-app, chart `deploy/apps`              |
 | `argo-rollouts` | `argo-rollouts` | chart argo-rollouts                        |
 | `prometheus`    | `monitoring`    | chart prometheus, только server            |
-| `clickhouse`    | `langfuse`      | `deploy/langfuse`                          |
+| `clickhouse`    | `langfuse`      | `deploy/clickhouse`, общий                 |
 | `langfuse`      | `langfuse`      | chart langfuse, внешний ClickHouse         |
 | `litellm`       | `llm`           | `deploy/litellm`, свой Postgres            |
+| `grafana`       | `monitoring`    | chart grafana (grafana-community)          |
 
 Кластер — k3s на выделенном хосте (`TARGET=k3s`, по умолчанию) или локальный kind
 (`TARGET=kind`). Манифесты одинаковы, различаются только адреса NodePort снаружи и
@@ -37,6 +38,19 @@ Root-app платформы называется `llm-platform`, не `root`: т
 
 Тенант подключает его через `envFrom: [{secretRef: {name: platform-llm}}]`.
 
+Если у тенанта есть пользователь `<name>_writer` в общем ClickHouse (`deploy/clickhouse`),
+`make tenant` кладёт рядом Secret `platform-clickhouse`:
+
+| Ключ                  | Значение                                        |
+|-----------------------|-------------------------------------------------|
+| `CLICKHOUSE_URL`      | `http://clickhouse.langfuse:8123`               |
+| `CLICKHOUSE_DATABASE` | `<name>`                                        |
+| `CLICKHOUSE_USER`     | `<name>_writer`                                 |
+| `CLICKHOUSE_PASSWORD` | из `langfuse/clickhouse-users`                  |
+
+Имя тенанта с ClickHouse — без `-`: пароль попадает в под ClickHouse переменной
+`CH_PASSWORD_<user>`.
+
 - Трейс каждого вызова пишет LiteLLM в проект Langfuse тенанта: у virtual key в
   `metadata.logging` задан колбэк `langfuse_otel` с ключами этого проекта. В проект
   `platform` такие трейсы не дублируются.
@@ -45,6 +59,23 @@ Root-app платформы называется `llm-platform`, не `root`: т
   отвечает ошибкой, spend виден в LiteLLM UI.
 - Для API тенанта зарезервированы NodePort 30000–30009 (в k3s на `HOST:3000x`, в kind на
   `localhost:1300x`). Тенант выбирает свободный порт сам.
+
+## ClickHouse и Grafana
+
+ClickHouse — один на платформу, в namespace `langfuse` (там PVC с данными Langfuse). Пользователи,
+профили и квоты — XML в ConfigMap `clickhouse-config`, пароли — из Secret `clickhouse-users`
+через env `CH_PASSWORD_<user>` (`<password from_env=.../>`). Базы создаёт PostSync Job
+`clickhouse-databases` (`CREATE DATABASE IF NOT EXISTS`). Ручных `CREATE USER` нет.
+
+`grafana_ro`: `readonly=2`, `max_memory_usage` 1 ГБ, `max_execution_time` 30 с,
+`max_concurrent_queries_for_user` 4; лимиты можно только уменьшить (constraints min 1 / max),
+квота 20000 запросов и 3600 с выполнения в час. Плагин Grafana (clickhouse-go) шлёт
+`max_execution_time` = таймаут источника + 5 с, поэтому `queryTimeout` источника — 25.
+
+Grafana: источники `prometheus` и `clickhouse` (uid — контракт для дашбордов тенантов),
+база Grafana на PVC. `make grafana-token NAME=<p>` (`scripts/grafana-token.sh`, через admin API
+по NodePort) создаёт папку `<p>`, service account `<p>` с ролью Viewer и Edit на эту папку и
+токен в `monitoring/grafana-token-<p>`; если секрет есть — печатает сохранённый.
 
 ## Секреты
 
@@ -57,6 +88,10 @@ Root-app платформы называется `llm-platform`, не `root`: т
   пользователь `admin@llm-platform.local`), пароли Postgres, Redis, S3, ClickHouse;
 - `llm/langfuse-api`: ключи проекта `platform` для глобального колбэка LiteLLM. Туда идут
   вызовы ключей без `metadata.logging`, например master key;
+- `langfuse/clickhouse-users`: пароли пользователей общего ClickHouse, ключ = имя; новые
+  ключи дописываются, существующие не меняются;
+- `monitoring/grafana-admin`, `monitoring/grafana-clickhouse` (пароль `grafana_ro`),
+  `monitoring/grafana-token-<p>`;
 - `llm/tenant-<name>`: ключи тенанта (virtual key, id и API-ключи проекта Langfuse), источник
   для `platform-llm`.
 
