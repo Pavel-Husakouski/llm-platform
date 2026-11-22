@@ -9,6 +9,9 @@ HOST           ?= 192.168.50.195
 # ssh-адрес хоста для make k3s-install/kubeconfig/k3s-uninstall: SSH=user@host
 SSH            ?= $(HOST)
 K3S_VERSION    := v1.37.2+k3s1
+# Данные платформы на хосте вне k3s, переживают k3s-uninstall: тома (default-local-storage-path
+# k3s, StorageClass platform) и бэкап секретов, без которого тома бесполезны.
+STORAGE_DIR    := /srv/llm-platform
 
 CLUSTER        := llm-platform
 KIND_CONFIG    := deploy/kind/cluster.yaml
@@ -24,7 +27,7 @@ TOOLS_DIR      ?= $(HOME)/.local/bin
 REVISION       ?= main
 WAIT_TIMEOUT   ?= 900
 # Application платформы: make wait не ждёт Application тенантов.
-APPS           := llm-platform argo-rollouts prometheus clickhouse langfuse litellm grafana
+APPS           := llm-platform storage argo-rollouts prometheus clickhouse langfuse litellm grafana
 
 # make tenant NAME=agent NS=agent BUDGET=1 MODELS=deepseek-flash
 NS             ?= $(NAME)
@@ -44,6 +47,8 @@ LITELLM_URL    := $(URL):30400
 CLICKHOUSE_URL := $(URL):30123
 CLICKHOUSE_TCP := $(HOST):30900
 TENANT_PORTS   := $(HOST):30000-30009
+# Скрипты кладут бэкап секретов на хост по ssh и восстанавливают из него (scripts/lib.sh).
+SECRETS_BACKUP := SECRETS_SSH=$(SSH) SECRETS_DIR=$(STORAGE_DIR)/secrets
 else ifeq ($(TARGET),kind)
 CONTEXT        := kind-$(CLUSTER)
 URL            := http://localhost
@@ -55,6 +60,8 @@ LITELLM_URL    := $(URL):14000
 CLICKHOUSE_URL := $(URL):18123
 CLICKHOUSE_TCP := localhost:19000
 TENANT_PORTS   := localhost:13000-13009 (NodePort 30000-30009)
+# В kind данные живут, пока жив кластер: бэкапа секретов нет.
+SECRETS_BACKUP :=
 else
 $(error TARGET=$(TARGET): нужно k3s или kind)
 endif
@@ -64,7 +71,7 @@ HELM    := helm --kube-context $(CONTEXT)
 
 .PHONY: up down cluster secret argocd root wait status tenant tenant-delete llm-budget tools \
   argocd-password langfuse-password litellm-password clickhouse-password grafana-password \
-  grafana-token k3s-install k3s-uninstall kubeconfig
+  grafana-token k3s-install k3s-storage k3s-uninstall kubeconfig
 
 up: cluster secret argocd root wait status
 
@@ -90,13 +97,32 @@ cluster:
 	@echo "k3s на $(HOST) доступен (context $(CONTEXT))"
 endif
 
-# k3s на хосте: один узел, без Traefik и ServiceLB, сервисы платформы открыты через NodePort.
-# Нужен sudo с паролем, поэтому ssh -t: запускать самому, не из агента.
-k3s-install:
-	ssh -t $(SSH) 'curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=$(K3S_VERSION) sh -s - server \
-	  --disable traefik --disable servicelb --tls-san $(HOST) --write-kubeconfig-mode 644'
+# Каталоги $(STORAGE_DIR) на хосте: volumes — тома, secrets — бэкап секретов, его пишет и читает
+# ssh-пользователь (make secret, tenant, grafana-token).
+STORAGE_DIRS = sudo install -d -m 755 $(STORAGE_DIR) $(STORAGE_DIR)/volumes && \
+  sudo install -d -m 700 -o $$(id -u) -g $$(id -g) $(STORAGE_DIR)/secrets
 
-# Удаляет k3s с хоста вместе со всеми данными платформы и тенантов.
+# k3s на хосте: один узел, без Traefik и ServiceLB, сервисы платформы открыты через NodePort,
+# тома в $(STORAGE_DIR)/volumes. Нужен sudo с паролем, поэтому ssh -t: запускать самому, не из агента.
+k3s-install:
+	ssh -t $(SSH) '$(STORAGE_DIRS) && curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=$(K3S_VERSION) sh -s - server \
+	  --disable traefik --disable servicelb --tls-san $(HOST) --write-kubeconfig-mode 644 \
+	  --default-local-storage-path $(STORAGE_DIR)/volumes'
+
+# Для k3s, поставленного без --default-local-storage-path: каталоги, путь томов в
+# /etc/rancher/k3s/config.yaml и перезапуск k3s (поды перезапустятся). Самому, нужен sudo.
+k3s-storage:
+	ssh -t $(SSH) 'set -e; $(STORAGE_DIRS); \
+	  if sudo grep -qs "^default-local-storage-path:" /etc/rancher/k3s/config.yaml; then \
+	    sudo grep "^default-local-storage-path:" /etc/rancher/k3s/config.yaml; \
+	  else \
+	    echo "default-local-storage-path: $(STORAGE_DIR)/volumes" | sudo tee -a /etc/rancher/k3s/config.yaml; \
+	  fi; \
+	  sudo systemctl restart k3s'
+
+# Удаляет k3s с хоста. Данные платформы в $(STORAGE_DIR) остаются: после k3s-install и make up
+# сервисы поднимаются на них, секреты восстанавливаются из бэкапа. Тома тенантов на local-path
+# удаляются.
 k3s-uninstall:
 	ssh -t $(SSH) 'sudo /usr/local/bin/k3s-uninstall.sh'
 
@@ -115,7 +141,7 @@ kubeconfig:
 	echo "context $(CLUSTER) → https://$(HOST):6443"
 
 secret:
-	@KUBECTL="$(KUBECTL)" scripts/platform-secrets.sh
+	@KUBECTL="$(KUBECTL)" $(SECRETS_BACKUP) scripts/platform-secrets.sh
 
 argocd:
 	$(HELM) upgrade --install argocd argo-cd --repo $(ARGOCD_REPO) --version $(ARGOCD_CHART) \
@@ -161,13 +187,13 @@ status:
 # повторный запуск не пересоздаёт ключи, только копирует platform-llm.
 tenant:
 	@test -n "$(NAME)" || { echo "укажите NAME=<tenant> [NS=] [BUDGET=] [MODELS=]" >&2; exit 1; }
-	@KUBECTL="$(KUBECTL)" LITELLM_URL=$(LITELLM_URL) LANGFUSE_URL=$(LANGFUSE_URL) scripts/tenant.sh '$(NAME)' '$(NS)' '$(BUDGET)' '$(MODELS)'
+	@KUBECTL="$(KUBECTL)" $(SECRETS_BACKUP) LITELLM_URL=$(LITELLM_URL) LANGFUSE_URL=$(LANGFUSE_URL) scripts/tenant.sh '$(NAME)' '$(NS)' '$(BUDGET)' '$(MODELS)'
 
 # Удаляет тенанта: ключ LiteLLM, проект Langfuse, namespace и llm/tenant-<name>. Без
 # CONFIRM=<name> только показывает, что будет удалено: make tenant-delete NAME=agent CONFIRM=agent
 tenant-delete:
 	@test -n "$(NAME)" || { echo "укажите NAME=<tenant> [CONFIRM=<tenant>]" >&2; exit 1; }
-	@KUBECTL="$(KUBECTL)" LITELLM_URL=$(LITELLM_URL) LANGFUSE_URL=$(LANGFUSE_URL) \
+	@KUBECTL="$(KUBECTL)" $(SECRETS_BACKUP) LITELLM_URL=$(LITELLM_URL) LANGFUSE_URL=$(LANGFUSE_URL) \
 	  scripts/tenant-delete.sh '$(NAME)' '$(CONFIRM)'
 
 # Бюджет virtual key тенанта в долларах: make llm-budget KEY=agent BUDGET=0
@@ -210,4 +236,4 @@ grafana-password:
 # make grafana-token NAME=layers. Повторный запуск печатает сохранённый токен.
 grafana-token:
 	@test -n "$(NAME)" || { echo "укажите NAME=<project>" >&2; exit 1; }
-	@KUBECTL="$(KUBECTL)" GRAFANA_URL=$(GRAFANA_URL) scripts/grafana-token.sh '$(NAME)'
+	@KUBECTL="$(KUBECTL)" $(SECRETS_BACKUP) GRAFANA_URL=$(GRAFANA_URL) scripts/grafana-token.sh '$(NAME)'

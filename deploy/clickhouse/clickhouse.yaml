@@ -117,15 +117,15 @@ data:
         </grafana_ro>
       </quotas>
       <users>
-        <!-- Проект layers пишет свои таблицы. ALTER и DROP не выданы: миграции схемы — через
-             администратора платформы. -->
+        <!-- Проект layers пишет свои таблицы и мигрирует их схему (ALTER TABLE). DROP не
+             выдан: удаление таблиц — через администратора платформы. -->
         <layers_writer>
           <password from_env="CH_PASSWORD_layers_writer"/>
           <networks><ip>::/0</ip></networks>
           <profile>default</profile>
           <quota>default</quota>
           <grants>
-            <query>GRANT CREATE TABLE, INSERT, SELECT ON layers.*</query>
+            <query>GRANT CREATE TABLE, ALTER TABLE, INSERT, SELECT ON layers.*</query>
           </grants>
         </layers_writer>
         <grafana_ro>
@@ -180,7 +180,7 @@ spec:
         app.kubernetes.io/name: clickhouse
       annotations:
         # subPath не обновляется на лету: после правки clickhouse-config поднять revision.
-        config/revision: "6"
+        config/revision: "7"
     spec:
       securityContext:
         fsGroup: 101
@@ -246,6 +246,8 @@ spec:
     - metadata:
         name: data
       spec:
+        # Постоянный каталог хоста, переживает переустановку k3s (deploy/storage).
+        storageClassName: platform
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:

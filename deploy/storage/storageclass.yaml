@@ -1,0 +1,15 @@
+# Тома платформы, которые переживают переустановку k3s. Provisioner тот же local-path, но:
+#   - каталог тома — <ns>/<pvc>/ без UID PV: новый PVC с тем же именем получает тот же
+#     каталог вместе с данными (provisioner делает mkdir -p, существующее не трогает);
+#   - Retain: удаление PVC не стирает каталог.
+# Корень — default-local-storage-path k3s, /srv/llm-platform/volumes (make k3s-install,
+# make k3s-storage), вне /var/lib/rancher, который удаляет k3s-uninstall.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: platform
+provisioner: rancher.io/local-path
+parameters:
+  pathPattern: "{{ .PVC.Namespace }}/{{ .PVC.Name }}/"
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer

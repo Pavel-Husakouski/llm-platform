@@ -58,6 +58,45 @@ field() {
   $KUBECTL -n "$1" get secret "$2" -o "jsonpath={.data.$3}" | base64 -d
 }
 
+# Бэкап секретов платформы на хосте k3s: SECRETS_SSH (ssh-адрес), SECRETS_DIR (каталог, его
+# создают make k3s-install и k3s-storage). Без SECRETS_SSH (kind) — ничего не делают.
+# Секреты платформы — Opaque в llm, langfuse и monitoring, кроме созданных чартами (с меткой
+# app.kubernetes.io/instance): их Argo CD создаст сам.
+SECRETS_FILE=${SECRETS_DIR:-/srv/llm-platform/secrets}/secrets.json
+
+backup_secrets() {
+  [ -n "${SECRETS_SSH:-}" ] || return 0
+  local ns
+  for ns in llm langfuse monitoring; do $KUBECTL -n "$ns" get secret -o json; done \
+    | jq -s '[.[].items[]
+        | select(.type == "Opaque" and .metadata.labels["app.kubernetes.io/instance"] == null)
+        | {apiVersion: "v1", kind: "Secret", type, data,
+           metadata: {name: .metadata.name, namespace: .metadata.namespace}}]' > "$tmp/backup.json"
+  # shellcheck disable=SC2029 # путь подставляется на клиенте намеренно
+  ssh "$SECRETS_SSH" "umask 077 && cat > '$SECRETS_FILE.tmp' && mv '$SECRETS_FILE.tmp' '$SECRETS_FILE'" \
+    < "$tmp/backup.json" \
+    || die "бэкап секретов на $SECRETS_SSH:$SECRETS_FILE не записан (нет каталога? make k3s-storage)"
+  echo "бэкап секретов: $SECRETS_SSH:$SECRETS_FILE ($(jq length "$tmp/backup.json") шт.)"
+}
+
+# restore_secrets: секреты из бэкапа, которых нет в кластере. Существующие не трогает.
+restore_secrets() {
+  [ -n "${SECRETS_SSH:-}" ] || return 0
+  local s ns name
+  # shellcheck disable=SC2029 # путь подставляется на клиенте намеренно
+  ssh "$SECRETS_SSH" "if [ -f '$SECRETS_FILE' ]; then cat '$SECRETS_FILE'; fi" > "$tmp/restore.json" \
+    || die "нет доступа к $SECRETS_SSH по ssh"
+  [ -s "$tmp/restore.json" ] || { echo "бэкапа секретов на $SECRETS_SSH нет"; return 0; }
+  while read -r s; do
+    ns=$(jq -r .metadata.namespace <<< "$s")
+    name=$(jq -r .metadata.name <<< "$s")
+    exists "$ns" "$name" && continue
+    namespace "$ns"
+    $KUBECTL create -f - <<< "$s" >/dev/null
+    echo "secret $ns/$name восстановлен из бэкапа"
+  done < <(jq -c '.[]' "$tmp/restore.json")
+}
+
 # Admin API LiteLLM и внутренний tRPC Langfuse снаружи кластера, через NodePort. Адреса — в
 # LITELLM_URL и LANGFUSE_URL (задаёт make по TARGET).
 LITELLM_URL=${LITELLM_URL:-http://localhost:14000}

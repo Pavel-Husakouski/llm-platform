@@ -13,7 +13,7 @@ virtual key и свой проект Langfuse, а свои Application клад�
 Нужны `kubectl`, `helm`, `jq`, `curl`, `openssl`, `ssh` (для kind ещё `docker` и `kind`).
 
 По умолчанию (`TARGET=k3s`) платформа живёт в k3s на хосте `HOST=192.168.50.195`: один узел,
-без Traefik и ServiceLB, хранилище `local-path`.
+без Traefik и ServiceLB, хранилище `local-path` в `/srv/llm-platform/volumes`.
 
 ```sh
 make k3s-install              # один раз, сам: ssh -t на хост, спросит пароль sudo
@@ -21,8 +21,25 @@ make kubeconfig               # context llm-platform в ~/.kube/config (стар
 export DEEPSEEK_API_KEY=...   # только из окружения, .env не читается; без него make secret оставляет прежний
 make up                       # проверка кластера, секреты, Argo CD, root-app, ожидание
 make status
-make k3s-uninstall            # удаляет k3s с хоста вместе со всеми данными
+make k3s-uninstall            # удаляет k3s с хоста; данные платформы в /srv/llm-platform остаются
 ```
+
+### Данные переживают переустановку k3s
+
+Тома платформы (ClickHouse, оба Postgres, Redis и S3 Langfuse, Grafana) — на StorageClass
+`platform` (`deploy/storage`): каталог `/srv/llm-platform/volumes/<ns>/<pvc>/` на хосте,
+`Retain`. Секреты, без которых эти данные не прочитать, `make secret`, `make tenant`,
+`make tenant-delete` и `make grafana-token` копируют на хост в `/srv/llm-platform/secrets/`
+(права 700, ssh-пользователь), а `make secret` восстанавливает недостающие оттуда.
+
+```sh
+make k3s-uninstall && make k3s-install && make kubeconfig && make up   # данные на месте
+```
+
+k3s, поставленный раньше без пути `/srv/llm-platform/volumes`: один раз `make k3s-storage` (сам,
+sudo на хосте, перезапускает k3s). Тома тенантов на `local-path` по умолчанию тоже лежат в
+`/srv/llm-platform/volumes`, но под именами с UID и при переустановке не подхватываются: нужен
+`storageClassName: platform`. В kind (`TARGET=kind`) данных вне кластера нет.
 
 `make up REVISION=<ветка>` — Argo CD берёт `deploy/` из этой ветки. `HOST=` и `SSH=user@host`
 меняют хост. Локальный kind: `TARGET=kind` для любой цели (`make up TARGET=kind`, `make down
@@ -91,7 +108,7 @@ ClickHouse общий: в базе `default` — данные Langfuse, рядо
 | Пользователь    | Права                                   | Пароль                                           |
 |-----------------|-----------------------------------------|--------------------------------------------------|
 | `clickhouse`    | всё (им ходит Langfuse)                 | `make clickhouse-password`                       |
-| `layers_writer` | CREATE TABLE, INSERT, SELECT `layers.*` | `make clickhouse-password CH_USER=layers_writer` |
+| `layers_writer` | CREATE TABLE, ALTER TABLE, INSERT, SELECT `layers.*` | `make clickhouse-password CH_USER=layers_writer` |
 | `grafana_ro`    | SELECT `layers.*`, лимиты и квота       | `make clickhouse-password CH_USER=grafana_ro`    |
 
 Grafana берёт источники из provisioning: `uid: prometheus` и `uid: clickhouse` (пользователь

@@ -64,6 +64,8 @@ spec:
               adminPasswordKey: POSTGRES_PASSWORD
           storage:
             requestedSize: 2Gi
+            # Тома Langfuse — на постоянном каталоге хоста (deploy/storage).
+            className: platform
           # Пробы chart — exec pg_isready, на одном узле хватит раза в 30 с.
           livenessProbe:
             periodSeconds: 30
@@ -75,6 +77,7 @@ spec:
             existingSecretPasswordKey: default
           dataStorage:
             requestedSize: 1Gi
+            className: platform
         # Общий ClickHouse платформы из deploy/clickhouse, без operator и Keeper.
         clickhouse:
           deploy: false
@@ -93,6 +96,7 @@ spec:
           allInOne:
             data:
               size: 2Gi
+              storageClass: platform
             resources:
               requests: { cpu: 100m, memory: 256Mi }
               limits: { memory: 1Gi }
