@@ -75,7 +75,7 @@ spec:
             existingSecretPasswordKey: default
           dataStorage:
             requestedSize: 1Gi
-        # Свой ClickHouse из deploy/langfuse, без operator и Keeper.
+        # Общий ClickHouse платформы из deploy/clickhouse, без operator и Keeper.
         clickhouse:
           deploy: false
           host: clickhouse

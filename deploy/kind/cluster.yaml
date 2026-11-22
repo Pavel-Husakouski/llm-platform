@@ -23,7 +23,11 @@ nodes:
       - containerPort: 30400
         hostPort: 14000
         listenAddress: 127.0.0.1
-      # ClickHouse Langfuse: HTTP (play) и native-протокол
+      # Grafana
+      - containerPort: 30030
+        hostPort: 13030
+        listenAddress: 127.0.0.1
+      # Общий ClickHouse: HTTP (play) и native-протокол
       - containerPort: 30123
         hostPort: 18123
         listenAddress: 127.0.0.1

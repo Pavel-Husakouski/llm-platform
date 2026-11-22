@@ -4,11 +4,12 @@
 #   1. virtual key LiteLLM тенанта;
 #   2. проект Langfuse тенанта вместе с трейсами и API-ключами;
 #   3. namespace тенанта со всем содержимым. Платформенный namespace не удаляется, только
-#      Secret platform-llm в нём; namespace, который делят несколько тенантов, не трогается
+#      Secret platform-llm (и platform-clickhouse) в нём; namespace, который делят несколько тенантов, не трогается
 #      вовсе: platform-llm в нём один на всех;
 #   4. Secret llm/tenant-<name>.
 # Данные берутся из llm/tenant-<name>. После каждого шага его поле удаляется из Secret, поэтому
 # повторный запуск после сбоя продолжает с невыполненного шага.
+# База и пользователь тенанта в ClickHouse описаны в deploy/clickhouse, их убирают там.
 # Application тенанта в Argo CD не трогает: его нужно удалить до этого, иначе Argo CD создаст
 # namespace заново.
 set -euo pipefail
@@ -46,7 +47,7 @@ if [ -n "$whole_ns" ]; then
 elif [ -n "$shared" ]; then
   echo "  - namespace $ns и platform-llm в нём не трогаются, их используют:$shared"
 elif [ -n "$ns" ]; then
-  echo "  - Secret $ns/platform-llm (namespace $ns платформенный, остаётся)"
+  echo "  - Secret $ns/platform-llm и $ns/platform-clickhouse (namespace $ns платформенный, остаётся)"
 fi
 echo "  - Secret llm/tenant-$name"
 
@@ -81,8 +82,8 @@ if [ -n "$whole_ns" ]; then
   $KUBECTL delete namespace "$ns" --ignore-not-found --timeout=5m >/dev/null
   echo "namespace $ns удалён"
 elif [ -n "$ns" ] && [ -z "$shared" ]; then
-  $KUBECTL -n "$ns" delete secret platform-llm --ignore-not-found >/dev/null
-  echo "Secret $ns/platform-llm удалён"
+  $KUBECTL -n "$ns" delete secret platform-llm platform-clickhouse --ignore-not-found >/dev/null
+  echo "Secret $ns/platform-llm и $ns/platform-clickhouse удалены"
 fi
 
 $KUBECTL -n llm delete secret "tenant-$name" >/dev/null

@@ -1,0 +1,83 @@
+# Общая Grafana платформы: источники Prometheus и ClickHouse заданы здесь (provisioning),
+# дашборды проекты заливают по API токеном service account из make grafana-token, каждый в
+# свою папку. Дашборды и токены живут в базе Grafana на PVC.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://grafana-community.github.io/helm-charts
+    chart: grafana
+    targetRevision: {{ .Values.charts.grafana }}
+    helm:
+      # Секреты grafana-admin и grafana-clickhouse создаёт make secret.
+      valuesObject:
+        admin:
+          existingSecret: grafana-admin
+        # PVC ReadWriteOnce: второй под при RollingUpdate его не получит.
+        deploymentStrategy:
+          type: Recreate
+        persistence:
+          enabled: true
+          size: 1Gi
+        testFramework:
+          enabled: false
+        service:
+          type: NodePort
+          port: 3000
+          nodePort: 30030
+        resources:
+          requests: { cpu: 50m, memory: 128Mi }
+          limits: { memory: 512Mi }
+        plugins:
+          - grafana-clickhouse-datasource@{{ .Values.charts.grafanaClickhouse }}
+        # GRAFANA_RO_PASSWORD для источника ClickHouse
+        envFromSecrets:
+          - name: grafana-clickhouse
+        grafana.ini:
+          analytics:
+            reporting_enabled: false
+            check_for_updates: false
+            check_for_plugin_updates: false
+          users:
+            allow_sign_up: false
+        # uid источников — контракт для дашбордов тенантов, не менять.
+        datasources:
+          datasources.yaml:
+            apiVersion: 1
+            datasources:
+              - name: Prometheus
+                uid: prometheus
+                type: prometheus
+                access: proxy
+                url: http://prometheus-server.monitoring:9090
+                isDefault: true
+                editable: false
+              - name: ClickHouse
+                uid: clickhouse
+                type: grafana-clickhouse-datasource
+                editable: false
+                jsonData:
+                  host: clickhouse.langfuse
+                  port: 8123
+                  protocol: http
+                  username: grafana_ro
+                  defaultDatabase: layers
+                secureJsonData:
+                  password: $GRAFANA_RO_PASSWORD
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

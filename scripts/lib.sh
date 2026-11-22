@@ -39,6 +39,20 @@ once() {
   if exists "$1" "$2"; then echo "secret $1/$2 уже есть"; else apply "$@"; fi
 }
 
+# passwords <ns> <secret> <key>...: секрет ровно с этими ключами; у ключей, которых ещё нет,
+# случайное значение, существующие не меняются. Так новый пользователь получает пароль, а
+# старые пароли остаются.
+passwords() {
+  local ns=$1 name=$2 k v pairs=()
+  shift 2
+  for k in "$@"; do
+    v=''
+    if exists "$ns" "$name"; then v=$(field "$ns" "$name" "$k"); fi
+    pairs+=("$k=${v:-$(rand 20)}")
+  done
+  apply "$ns" "$name" "${pairs[@]}"
+}
+
 # field <ns> <secret> <key>: значение ключа или пустая строка, если ключа нет.
 field() {
   $KUBECTL -n "$1" get secret "$2" -o "jsonpath={.data.$3}" | base64 -d
