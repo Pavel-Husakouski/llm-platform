@@ -70,6 +70,8 @@ spec:
                   protocol: http
                   username: grafana_ro
                   defaultDatabase: layers
+                  # Не больше max_execution_time профиля grafana_ro (30 с), иначе отказ.
+                  queryTimeout: "30"
                 secureJsonData:
                   password: $GRAFANA_RO_PASSWORD
   destination:

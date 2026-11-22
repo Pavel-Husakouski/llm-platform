@@ -87,9 +87,9 @@ data:
   platform-users.xml: |
     <clickhouse>
       <profiles>
-        <!-- Только чтение для дашбордов. readonly=2: драйвер Grafana может передавать
-             настройки запроса, но лимиты ниже const и не меняются (0 значил бы «без
-             лимита»). -->
+        <!-- Только чтение для дашбордов. readonly=2: плагин Grafana передаёт настройки
+             запроса (max_execution_time = queryTimeout источника). Лимиты можно только
+             уменьшить, min 1 не даёт снять их нулём («без лимита»). -->
         <grafana_ro>
           <readonly>2</readonly>
           <max_memory_usage>1000000000</max_memory_usage>
@@ -97,8 +97,8 @@ data:
           <max_concurrent_queries_for_user>4</max_concurrent_queries_for_user>
           <constraints>
             <readonly><const/></readonly>
-            <max_memory_usage><const/></max_memory_usage>
-            <max_execution_time><const/></max_execution_time>
+            <max_memory_usage><min>1</min><max>1000000000</max></max_memory_usage>
+            <max_execution_time><min>1</min><max>30</max></max_execution_time>
             <max_concurrent_queries_for_user><const/></max_concurrent_queries_for_user>
           </constraints>
         </grafana_ro>
@@ -180,7 +180,7 @@ spec:
         app.kubernetes.io/name: clickhouse
       annotations:
         # subPath не обновляется на лету: после правки clickhouse-config поднять revision.
-        config/revision: "5"
+        config/revision: "6"
     spec:
       securityContext:
         fsGroup: 101
