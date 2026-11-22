@@ -88,3 +88,4 @@ fi
 
 $KUBECTL -n llm delete secret "tenant-$name" >/dev/null
 echo "тенант $name удалён"
+backup_secrets

@@ -27,6 +27,8 @@ spec:
         persistence:
           enabled: true
           size: 1Gi
+          # Постоянный каталог хоста, переживает переустановку k3s (deploy/storage).
+          storageClassName: platform
         testFramework:
           enabled: false
         service:

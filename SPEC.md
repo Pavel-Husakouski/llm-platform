@@ -5,6 +5,7 @@
 | Application     | Namespace       | Источник                                   |
 |-----------------|-----------------|--------------------------------------------|
 | `llm-platform`  | `argocd`        | root-app, chart `deploy/apps`              |
+| `storage`       | —               | `deploy/storage`, StorageClass `platform`  |
 | `argo-rollouts` | `argo-rollouts` | chart argo-rollouts                        |
 | `prometheus`    | `monitoring`    | chart prometheus, только server            |
 | `clickhouse`    | `langfuse`      | `deploy/clickhouse`, общий                 |
@@ -77,11 +78,29 @@ Grafana: источники `prometheus` и `clickhouse` (uid — контрак
 по NodePort) создаёт папку `<p>`, service account `<p>` с ролью Viewer и Edit на эту папку и
 токен в `monitoring/grafana-token-<p>`; если секрет есть — печатает сохранённый.
 
+## Данные и переустановка k3s
+
+`/srv/llm-platform` на хосте вне каталогов k3s, `k3s-uninstall` его не трогает:
+
+- `volumes/` — `default-local-storage-path` k3s (флаг в `make k3s-install`, для старой установки
+  `make k3s-storage`). StorageClass `platform` (Application `storage`, sync-wave -2): тот же
+  local-path, `pathPattern: <ns>/<pvc>/` и `Retain`. PVC с тем же именем после переустановки
+  получает тот же каталог с данными.
+- `secrets/secrets.json` — бэкап секретов платформы: Opaque в `llm`, `langfuse`, `monitoring` без
+  метки `app.kubernetes.io/instance` (те создают чарты). Пишется по ssh в конце `make secret`,
+  `tenant`, `tenant-delete`, `grafana-token`; `make secret` в начале создаёт из него секреты,
+  которых нет в кластере, и только потом генерирует недостающие. Без него тома бесполезны:
+  пароли Postgres заданы при инициализации, данные Langfuse зашифрованы `encryption-key`.
+
+Не переживают переустановку: метрики Prometheus (без тома), состояние Argo CD (восстанавливается
+из git, пароль admin новый), `platform-llm` и `platform-clickhouse` в namespace тенантов
+(`make tenant` копирует заново).
+
 ## Секреты
 
 В git секретов нет. `make secret` (`scripts/platform-secrets.sh`) создаёт их один раз,
-существующие не перезаписывает. Ключ DeepSeek берётся из `DEEPSEEK_API_KEY` и обновляется
-при каждом запуске.
+существующие не перезаписывает, после переустановки k3s берёт из бэкапа на хосте. Ключ
+DeepSeek берётся из `DEEPSEEK_API_KEY` и обновляется при каждом запуске.
 
 - `llm/deepseek`, `llm/litellm` (master key, пароль Postgres);
 - `langfuse/*`: ключи приложения, headless init (org `llm-platform`, проект `platform`,

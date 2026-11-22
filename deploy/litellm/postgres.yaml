@@ -77,6 +77,8 @@ spec:
     - metadata:
         name: data
       spec:
+        # Постоянный каталог хоста, переживает переустановку k3s (deploy/storage).
+        storageClassName: platform
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:

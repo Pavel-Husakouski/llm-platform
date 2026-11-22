@@ -7,6 +7,9 @@ set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
+# После переустановки k3s: секреты из бэкапа на хосте, данные в томах зашифрованы и закрыты ими.
+restore_secrets
+
 for ns in llm langfuse monitoring; do namespace "$ns"; done
 
 if [ -n "${DEEPSEEK_API_KEY:-}" ]; then
@@ -59,3 +62,5 @@ once llm litellm \
 apply llm langfuse-api \
   "LANGFUSE_PUBLIC_KEY=$(get langfuse langfuse-init LANGFUSE_INIT_PROJECT_PUBLIC_KEY)" \
   "LANGFUSE_SECRET_KEY=$(get langfuse langfuse-init LANGFUSE_INIT_PROJECT_SECRET_KEY)"
+
+backup_secrets

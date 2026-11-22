@@ -71,4 +71,5 @@ token=$(grafana POST "/api/serviceaccounts/$sa_id/tokens" \
   || die "Grafana: токен не выпущен: $(cat "$tmp/grafana.out")"
 
 apply monitoring "$secret" "GRAFANA_TOKEN=$token" "GRAFANA_FOLDER_UID=$name" >&2
+backup_secrets >&2
 echo "$token"

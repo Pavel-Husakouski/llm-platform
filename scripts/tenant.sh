@@ -114,3 +114,4 @@ apply llm "tenant-$name" \
 # Ключи сохранены: дальше откат не нужен, повторный запуск возьмёт их из tenant-<name>.
 project_id='' llm_key=''
 publish
+backup_secrets
