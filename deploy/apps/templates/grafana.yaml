@@ -70,8 +70,9 @@ spec:
                   protocol: http
                   username: grafana_ro
                   defaultDatabase: layers
-                  # Не больше max_execution_time профиля grafana_ro (30 с), иначе отказ.
-                  queryTimeout: "30"
+                  # clickhouse-go шлёт max_execution_time = таймаут + 5 с, а профиль grafana_ro
+                  # разрешает не больше 30: таймаут 25.
+                  queryTimeout: "25"
                 secureJsonData:
                   password: $GRAFANA_RO_PASSWORD
   destination:
