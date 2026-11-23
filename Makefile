@@ -27,7 +27,7 @@ TOOLS_DIR      ?= $(HOME)/.local/bin
 REVISION       ?= main
 WAIT_TIMEOUT   ?= 900
 # Application платформы: make wait не ждёт Application тенантов.
-APPS           := llm-platform storage argo-rollouts prometheus clickhouse langfuse litellm grafana
+APPS           := llm-platform storage argo-rollouts prometheus clickhouse langfuse litellm embeddings grafana
 
 # make tenant NAME=agent NS=agent BUDGET=1 MODELS=deepseek-flash
 NS             ?= $(NAME)
@@ -44,6 +44,7 @@ PROMETHEUS_URL := $(URL):30090
 GRAFANA_URL    := $(URL):30030
 LANGFUSE_URL   := $(URL):30300
 LITELLM_URL    := $(URL):30400
+EMBEDDINGS_URL := $(URL):30180
 CLICKHOUSE_URL := $(URL):30123
 CLICKHOUSE_TCP := $(HOST):30900
 TENANT_PORTS   := $(HOST):30000-30009
@@ -57,6 +58,7 @@ PROMETHEUS_URL := $(URL):19090
 GRAFANA_URL    := $(URL):13030
 LANGFUSE_URL   := $(URL):13300
 LITELLM_URL    := $(URL):14000
+EMBEDDINGS_URL := $(URL):18180
 CLICKHOUSE_URL := $(URL):18123
 CLICKHOUSE_TCP := localhost:19000
 TENANT_PORTS   := localhost:13000-13009 (NodePort 30000-30009)
@@ -179,6 +181,7 @@ status:
 	@echo "Prometheus: $(PROMETHEUS_URL)"
 	@echo "Langfuse:   $(LANGFUSE_URL) (admin@llm-platform.local, make langfuse-password)"
 	@echo "LiteLLM:    $(LITELLM_URL)/ui (admin, make litellm-password)"
+	@echo "Embeddings: $(EMBEDDINGS_URL)/health (alias embed в LiteLLM)"
 	@echo "Grafana:    $(GRAFANA_URL) (admin, make grafana-password)"
 	@echo "ClickHouse: $(CLICKHOUSE_URL)/play, native $(CLICKHOUSE_TCP) (clickhouse, make clickhouse-password)"
 	@echo "Тенанты:    $(TENANT_PORTS)"

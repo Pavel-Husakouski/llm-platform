@@ -52,6 +52,7 @@ TARGET=kind` удаляет kind-кластер).
 | Grafana    | http://HOST:30030               | http://localhost:13030              | admin, `make grafana-password`                |
 | Langfuse   | http://HOST:30300               | http://localhost:13300              | admin@llm-platform.local, `make langfuse-password` |
 | LiteLLM    | http://HOST:30400/ui            | http://localhost:14000/ui           | admin, `make litellm-password` (master key)   |
+| Embeddings | http://HOST:30180/health        | http://localhost:18180/health       | TEI, в LiteLLM alias `embed`                  |
 | ClickHouse | http://HOST:30123/play, :30900  | http://localhost:18123/play, :19000 | clickhouse, `make clickhouse-password`        |
 
 В k3s сервисы открыты всей LAN без TLS. Для API тенантов зарезервированы NodePort 30000–30009;
@@ -132,7 +133,9 @@ curl -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
 ## Модели
 
 Список моделей и цены — в `deploy/litellm/litellm.yaml` (`model_list`). Тенант обращается к
-модели по alias (`deepseek-flash`), ключ провайдера есть только у LiteLLM.
+модели по alias (`deepseek-flash`), ключ провайдера есть только у LiteLLM. Локальные
+эмбеддинги (TEI `intfloat/multilingual-e5-base`, `deploy/embeddings`) отдаются под alias
+`embed`; тенанту, которому они нужны: `make tenant ... MODELS=deepseek-flash,embed`.
 
 ## Проверки
 

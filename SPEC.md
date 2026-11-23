@@ -11,6 +11,7 @@
 | `clickhouse`    | `langfuse`      | `deploy/clickhouse`, общий                 |
 | `langfuse`      | `langfuse`      | chart langfuse, внешний ClickHouse         |
 | `litellm`       | `llm`           | `deploy/litellm`, свой Postgres            |
+| `embeddings`    | `llm`           | `deploy/embeddings`, TEI, alias `embed`    |
 | `grafana`       | `monitoring`    | chart grafana (grafana-community)          |
 
 Кластер — k3s на выделенном хосте (`TARGET=k3s`, по умолчанию) или локальный kind

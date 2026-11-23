@@ -20,6 +20,17 @@ data:
         model_info:
           input_cost_per_token: 0.0000003
           output_cost_per_token: 0.0000012
+      # Локальные эмбеддинги (TEI, deploy/embeddings) под alias embed: OpenAI-совместимый
+      # /v1/embeddings, api_key TEI не проверяет. Цены 0 — эмбеддинги локальные.
+      - model_name: embed
+        litellm_params:
+          model: openai/intfloat/multilingual-e5-base
+          api_base: http://embeddings:80/v1
+          api_key: sk-dummy
+        model_info:
+          mode: embedding
+          input_cost_per_token: 0
+          output_cost_per_token: 0
     router_settings:
       num_retries: 2
     litellm_settings:
@@ -63,7 +74,7 @@ spec:
       annotations:
         # subPath не обновляется на лету: после правки config.yaml поднять revision, чтобы
         # Deployment перезапустил под.
-        config/revision: "1"
+        config/revision: "2"
     spec:
       # Без БД LiteLLM падает на миграциях и уходит в CrashLoopBackOff: ждём Postgres заранее.
       initContainers:
