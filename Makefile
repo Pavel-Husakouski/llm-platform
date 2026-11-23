@@ -71,7 +71,7 @@ endif
 KUBECTL := kubectl --context $(CONTEXT)
 HELM    := helm --kube-context $(CONTEXT)
 
-.PHONY: up down cluster secret argocd root wait status tenant tenant-delete llm-budget tools \
+.PHONY: up down cluster secret argocd root wait status tenant tenant-key tenant-delete llm-budget tools \
   argocd-password langfuse-password litellm-password clickhouse-password grafana-password \
   grafana-token k3s-install k3s-storage k3s-uninstall kubeconfig
 
@@ -198,6 +198,11 @@ tenant-delete:
 	@test -n "$(NAME)" || { echo "укажите NAME=<tenant> [CONFIRM=<tenant>]" >&2; exit 1; }
 	@KUBECTL="$(KUBECTL)" $(SECRETS_BACKUP) LITELLM_URL=$(LITELLM_URL) LANGFUSE_URL=$(LANGFUSE_URL) \
 	  scripts/tenant-delete.sh '$(NAME)' '$(CONFIRM)'
+
+# Virtual key тенанта (для приложений вне кластера): make tenant-key NAME=layers
+tenant-key:
+	@test -n "$(NAME)" || { echo "укажите NAME=<tenant>" >&2; exit 1; }
+	@$(KUBECTL) -n llm get secret tenant-$(NAME) -o jsonpath='{.data.LLM_API_KEY}' | base64 -d; echo
 
 # Бюджет virtual key тенанта в долларах: make llm-budget KEY=agent BUDGET=0
 llm-budget:

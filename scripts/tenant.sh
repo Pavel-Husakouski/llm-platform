@@ -5,8 +5,9 @@
 #      вызовов уходят в проект тенанта;
 #   3. Secret platform-llm в namespace тенанта (контракт тенанта) и platform-clickhouse, если у
 #      тенанта есть пользователь <name>_writer в общем ClickHouse (deploy/clickhouse).
-# Ключи тенанта хранятся в Secret llm/tenant-<name>. Если он уже есть, шаги 1–2 пропускаются
-# и только заново копируется platform-llm: повторный запуск ничего не пересоздаёт.
+# Ключи тенанта хранятся в Secret llm/tenant-<name>. Если он уже есть, проект Langfuse не
+# трогается; ключ LiteLLM перевыпускается, только если его нет в БД LiteLLM (Postgres LiteLLM
+# пересоздавался), иначе ничего не пересоздаётся. platform-llm копируется заново всегда.
 # Работает снаружи кластера через NodePort: адреса LITELLM_URL и LANGFUSE_URL задаёт make
 # по TARGET, по умолчанию — адреса kind на localhost.
 set -euo pipefail
@@ -51,8 +52,43 @@ publish() {
   fi
 }
 
+# generate_key <public-key> <secret-key>: virtual key LiteLLM с alias <name>, бюджетом на 30 дней
+# и metadata.logging — трейсы вызовов уходят в проект Langfuse с этими ключами. Печатает ключ.
+generate_key() {
+  jq -n --arg name "$name" --arg models "$models" --argjson budget "$budget" \
+    --arg pk "$1" --arg sk "$2" --arg host "$LANGFUSE_HOST" '{
+      key_alias: $name,
+      models: ($models | split(",")),
+      max_budget: $budget,
+      budget_duration: "30d",
+      metadata: {logging: [{
+        callback_name: "langfuse_otel",
+        callback_type: "success_and_failure",
+        callback_vars: {langfuse_public_key: $pk, langfuse_secret_key: $sk, langfuse_host: $host}
+      }]}
+    }' > "$tmp/generate.json"
+  litellm /key/generate "$tmp/generate.json" | jq -er .key
+}
+
 if exists llm "tenant-$name"; then
-  echo "тенант $name уже есть, ключи не пересоздаются"
+  # Ключ мог пропасть из БД LiteLLM (Postgres LiteLLM пересоздавался): тогда перевыпускаем его с
+  # моделями и бюджетом из аргументов, проект Langfuse не трогаем — его ключи уже в tenant-<name>.
+  if ! litellm_get "/key/info?key_alias=$name" >/dev/null; then
+    echo "ключа LiteLLM $name нет в БД (Postgres LiteLLM пересоздавался?), перевыпускаю"
+    llm_key=$(generate_key "$(get llm "tenant-$name" LANGFUSE_PUBLIC_KEY)" \
+                          "$(get llm "tenant-$name" LANGFUSE_SECRET_KEY)") \
+      || die "LiteLLM: /key/generate без key"
+    echo "ключ LiteLLM $name перевыпущен (бюджет \$$budget на 30 дней, модели $models)"
+    apply llm "tenant-$name" \
+      "NAMESPACE=$(get llm "tenant-$name" NAMESPACE)" \
+      "LLM_API_KEY=$llm_key" \
+      "LANGFUSE_PROJECT_ID=$(get llm "tenant-$name" LANGFUSE_PROJECT_ID)" \
+      "LANGFUSE_PUBLIC_KEY=$(get llm "tenant-$name" LANGFUSE_PUBLIC_KEY)" \
+      "LANGFUSE_SECRET_KEY=$(get llm "tenant-$name" LANGFUSE_SECRET_KEY)"
+    backup_secrets
+  else
+    echo "тенант $name уже есть, ключи не пересоздаются"
+  fi
   publish
   exit 0
 fi
@@ -89,20 +125,7 @@ pk=$(jq -er .publicKey "$tmp/lf-keys") || die "Langfuse: projectApiKeys.create �
 sk=$(jq -er .secretKey "$tmp/lf-keys") || die "Langfuse: projectApiKeys.create без secretKey"
 
 # Колбэк в metadata.logging ключа: трейсы его вызовов идут в проект тенанта, а не в platform.
-jq -n --arg name "$name" --arg models "$models" --argjson budget "$budget" \
-  --arg pk "$pk" --arg sk "$sk" --arg host "$LANGFUSE_HOST" '{
-    key_alias: $name,
-    models: ($models | split(",")),
-    max_budget: $budget,
-    budget_duration: "30d",
-    metadata: {logging: [{
-      callback_name: "langfuse_otel",
-      callback_type: "success_and_failure",
-      callback_vars: {langfuse_public_key: $pk, langfuse_secret_key: $sk, langfuse_host: $host}
-    }]}
-  }' > "$tmp/generate.json"
-llm_key=$(litellm /key/generate "$tmp/generate.json" | jq -er .key) \
-  || die "LiteLLM: /key/generate без key"
+llm_key=$(generate_key "$pk" "$sk") || die "LiteLLM: /key/generate без key"
 echo "ключ LiteLLM $name (бюджет \$$budget на 30 дней, модели $models)"
 
 apply llm "tenant-$name" \

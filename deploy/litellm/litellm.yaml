@@ -12,14 +12,36 @@ data:
   config.yaml: |
     model_list:
       # Alias — то, что тенанты указывают в model: смена провайдера — правка только этого файла.
+      # deepseek-flash и fast — одна модель (v4-flash): первый alias исторический (agent), второй
+      # — для проекта layers. thinking задаёт поведение, цены одинаковые.
       - model_name: deepseek-flash
         litellm_params:
-          model: deepseek/deepseek-flash
+          model: deepseek/deepseek-v4-flash
           api_key: os.environ/DEEPSEEK_API_KEY
-        # Цены за токен: по ним LiteLLM считает spend и бюджет ключа.
         model_info:
-          input_cost_per_token: 0.0000003
-          output_cost_per_token: 0.0000012
+          input_cost_per_token: 0.00000014
+          output_cost_per_token: 0.00000028
+      - model_name: fast
+        litellm_params:
+          model: deepseek/deepseek-v4-flash
+          api_key: os.environ/DEEPSEEK_API_KEY
+          # Классификаторы и простые ответы: thinking выключен.
+          thinking:
+            type: disabled
+        model_info:
+          input_cost_per_token: 0.00000014
+          output_cost_per_token: 0.00000028
+      # Сложные многошаговые задачи с инструментами: thinking включён, усилие low.
+      - model_name: smart
+        litellm_params:
+          model: deepseek/deepseek-v4-pro
+          api_key: os.environ/DEEPSEEK_API_KEY
+          thinking:
+            type: enabled
+          reasoning_effort: low
+        model_info:
+          input_cost_per_token: 0.00000174
+          output_cost_per_token: 0.00000348
       # Локальные эмбеддинги (TEI, deploy/embeddings) под alias embed: OpenAI-совместимый
       # /v1/embeddings, api_key TEI не проверяет. Цены 0 — эмбеддинги локальные.
       - model_name: embed
@@ -33,8 +55,23 @@ data:
           output_cost_per_token: 0
     router_settings:
       num_retries: 2
+      # Если smart недоступен, запрос уходит на fast (как в проекте layers).
+      fallbacks:
+        - smart: [fast]
     litellm_settings:
       callbacks: ["langfuse_otel"]
+      # Провайдеру уходят только параметры, которые он понимает (thinking, reasoning_effort
+      # и т.п. у deepseek), остальное LiteLLM тихо отбрасывает.
+      drop_params: true
+      # Кэш ответов в Redis (deploy/litellm/redis.yaml): повторный запрос — из кэша, TTL 1 час.
+      # Агент отключает его на запрос флагом cache_exact_enabled (cache: {no-cache: true}).
+      cache: true
+      cache_params:
+        type: redis
+        host: redis
+        port: 6379
+        ttl: 3600
+        supported_call_types: [acompletion, completion]
     general_settings:
       master_key: os.environ/LITELLM_MASTER_KEY
       database_url: os.environ/DATABASE_URL
@@ -74,7 +111,7 @@ spec:
       annotations:
         # subPath не обновляется на лету: после правки config.yaml поднять revision, чтобы
         # Deployment перезапустил под.
-        config/revision: "2"
+        config/revision: "3"
     spec:
       # Без БД LiteLLM падает на миграциях и уходит в CrashLoopBackOff: ждём Postgres заранее.
       initContainers:
@@ -92,7 +129,7 @@ spec:
               memory: 64Mi
       containers:
         - name: litellm
-          image: ghcr.io/berriai/litellm:v1.108.9
+          image: ghcr.io/berriai/litellm:v1.109.1
           args: ["--config", "/app/config.yaml", "--port", "4000"]
           ports:
             - name: http

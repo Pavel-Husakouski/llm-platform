@@ -114,6 +114,18 @@ litellm() {
   cat "$out"
 }
 
+# litellm_get <path>: GET с master key, ответ в stdout. 404 (например, /key/info на
+# отсутствующий alias) — код возврата 1, прочие ошибки — die.
+litellm_get() {
+  local out=$tmp/litellm-get.out code
+  [ -f "$tmp/litellm-auth" ] \
+    || printf 'authorization: Bearer %s\n' "$(get llm litellm LITELLM_MASTER_KEY)" > "$tmp/litellm-auth"
+  code=$(curl -sS -o "$out" -w '%{http_code}' "$LITELLM_URL$1" -H @"$tmp/litellm-auth") \
+    || die "LiteLLM $LITELLM_URL недоступен"
+  [ "$code" = 200 ] || { [ "$code" = 404 ] && return 1; die "LiteLLM $1 ответил $code: $(cat "$out")"; }
+  cat "$out"
+}
+
 # langfuse_login: вход пользователем headless init, как это делает форма логина UI. Cookie
 # сессии — в $tmp/cookies, их берёт trpc.
 langfuse_login() {

@@ -132,10 +132,13 @@ curl -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
 
 ## Модели
 
-Список моделей и цены — в `deploy/litellm/litellm.yaml` (`model_list`). Тенант обращается к
-модели по alias (`deepseek-flash`), ключ провайдера есть только у LiteLLM. Локальные
-эмбеддинги (TEI `intfloat/multilingual-e5-base`, `deploy/embeddings`) отдаются под alias
-`embed`; тенанту, которому они нужны: `make tenant ... MODELS=deepseek-flash,embed`.
+Список моделей и цены — в `deploy/litellm/litellm.yaml` (`model_list`), ключ провайдера есть
+только у LiteLLM. Тенант обращается к модели по alias: `deepseek-flash` и `fast` — одна модель
+(deepseek-v4-flash, thinking выключен), `smart` — deepseek-v4-pro с thinking и fallback на
+`fast`, `embed` — локальные эмбеддинги (TEI `intfloat/multilingual-e5-base`,
+`deploy/embeddings`). Ответы кэшируются в Redis (TTL 1 ч, на запрос кэш отключается флагом
+`cache_exact_enabled`). Тенанту: `make tenant ... MODELS=deepseek-flash,embed` (или
+`smart,fast,embed`); virtual key для приложений вне кластера — `make tenant-key NAME=<name>`.
 
 ## Проверки
 

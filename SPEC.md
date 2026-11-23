@@ -121,8 +121,10 @@ DeepSeek берётся из `DEEPSEEK_API_KEY` и обновляется при
 (пользователь init) по адресам `LITELLM_URL` и `LANGFUSE_URL`, которые задаёт make по
 `TARGET`.
 
-1. Если есть Secret `llm/tenant-<name>`, проект и ключ не создаются, только копируется
-   `platform-llm`. Так `make tenant` идемпотентна.
+1. Если есть Secret `llm/tenant-<name>`, проект Langfuse не трогается; ключ LiteLLM
+   перевыпускается только когда его нет в БД LiteLLM (`/key/info` — 404, бывает после
+   пересоздания Postgres LiteLLM), затем копируется `platform-llm`. Так `make tenant`
+   идемпотентна и чинит ключи, потерянные вместе с БД.
 2. Иначе вход в Langfuse (`GET /api/auth/csrf`, `POST /api/auth/callback/credentials`) и
    tRPC `projects.create` и `projectApiKeys.create`.
 3. LiteLLM `POST /key/generate` с `key_alias`, `models`, `max_budget`, `budget_duration` и
