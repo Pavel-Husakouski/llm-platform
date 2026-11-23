@@ -66,17 +66,18 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
-          # /ready отвечает 200, только когда модель загружена: первый старт качает её в /data
-          # (30 мин с запасом), дальше под стартует за секунды.
+          # /health отвечает 200, только когда модель загружена (пока качается — 503), поэтому
+          # он и в startup, и в readiness (/ready в TEI 1.9 нет — 404). Окно 30 мин — первый
+          # старт с загрузкой модели, дальше под стартует за секунды.
           startupProbe:
             httpGet:
-              path: /ready
+              path: /health
               port: http
             periodSeconds: 10
             failureThreshold: 180
           readinessProbe:
             httpGet:
-              path: /ready
+              path: /health
               port: http
             periodSeconds: 10
           livenessProbe:
