@@ -6,8 +6,9 @@
 #   3. Secret platform-llm в namespace тенанта (контракт тенанта) и platform-clickhouse, если у
 #      тенанта есть пользователь <name>_writer в общем ClickHouse (deploy/clickhouse).
 # Ключи тенанта хранятся в Secret llm/tenant-<name>. Если он уже есть, проект Langfuse не
-# трогается; ключ LiteLLM перевыпускается, только если его нет в БД LiteLLM (Postgres LiteLLM
-# пересоздавался), иначе ничего не пересоздаётся. platform-llm копируется заново всегда.
+# трогается; ключ LiteLLM перевыпускается, только если токена из секрета нет в БД LiteLLM
+# (Postgres LiteLLM пересоздавался), иначе модели ключа сверяются с MODELS и обновляются при
+# расхождении. platform-llm копируется заново всегда.
 # Работает снаружи кластера через NodePort: адреса LITELLM_URL и LANGFUSE_URL задаёт make
 # по TARGET, по умолчанию — адреса kind на localhost.
 set -euo pipefail
@@ -71,9 +72,23 @@ generate_key() {
 }
 
 if exists llm "tenant-$name"; then
-  # Ключ мог пропасть из БД LiteLLM (Postgres LiteLLM пересоздавался): тогда перевыпускаем его с
-  # моделями и бюджетом из аргументов, проект Langfuse не трогаем — его ключи уже в tenant-<name>.
-  if ! litellm_get "/key/info?key_alias=$name" >/dev/null; then
+  # Ключ из секрета сверяется с БД LiteLLM по токену. Токена нет (Postgres LiteLLM
+  # пересоздавался) — перевыпускаем с моделями и бюджетом из аргументов; есть — сверяем модели
+  # и при расхождении обновляем через /key/update (бюджет не трогаем: для него make llm-budget).
+  # Проект Langfuse не трогается: его ключи уже в tenant-<name>.
+  token=$(get llm "tenant-$name" LLM_API_KEY)
+  if litellm_get "/key/info?key=$token" > "$tmp/key-info.json"; then
+    current=$(jq -r '.info.models | sort | join(",")' "$tmp/key-info.json")
+    desired=$(echo "$models" | tr ',' '\n' | sort | paste -sd, -)
+    if [ "$current" != "$desired" ]; then
+      jq -n --arg key "$token" --arg models "$models" \
+        '{key: $key, models: ($models | split(","))}' > "$tmp/update.json"
+      litellm /key/update "$tmp/update.json" >/dev/null
+      echo "ключ LiteLLM $name: модели $current -> $desired"
+    else
+      echo "тенант $name уже есть, ключ не пересоздаётся (модели $current)"
+    fi
+  else
     echo "ключа LiteLLM $name нет в БД (Postgres LiteLLM пересоздавался?), перевыпускаю"
     llm_key=$(generate_key "$(get llm "tenant-$name" LANGFUSE_PUBLIC_KEY)" \
                           "$(get llm "tenant-$name" LANGFUSE_SECRET_KEY)") \
@@ -86,8 +101,6 @@ if exists llm "tenant-$name"; then
       "LANGFUSE_PUBLIC_KEY=$(get llm "tenant-$name" LANGFUSE_PUBLIC_KEY)" \
       "LANGFUSE_SECRET_KEY=$(get llm "tenant-$name" LANGFUSE_SECRET_KEY)"
     backup_secrets
-  else
-    echo "тенант $name уже есть, ключи не пересоздаются"
   fi
   publish
   exit 0
