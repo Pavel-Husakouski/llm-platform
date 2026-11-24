@@ -54,7 +54,7 @@ TARGET=kind` удаляет kind-кластер).
 | Grafana    | http://HOST:30030               | http://localhost:13030              | admin, `make grafana-password`                |
 | Langfuse   | http://HOST:30300               | http://localhost:13300              | admin@llm-platform.local, `make langfuse-password` |
 | LiteLLM    | http://HOST:30400/ui            | http://localhost:14000/ui           | admin, `make litellm-password` (master key)   |
-| Embeddings | http://HOST:30180/health        | http://localhost:18180/health       | TEI, в LiteLLM alias `embed`                  |
+| Embeddings | http://HOST:30180/health        | http://localhost:18180/health       | TEI `intfloat/multilingual-e5-base`, в LiteLLM alias `embed` |
 | ClickHouse | http://HOST:30123/play, :30900  | http://localhost:18123/play, :19000 | clickhouse, `make clickhouse-password`        |
 | Postgres   | postgres.platform:5432 (в кластере) | postgres.platform:5432 (в кластере) | роль `<name>`, пароль в `platform-postgres`   |
 
