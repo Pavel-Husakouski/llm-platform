@@ -3,7 +3,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: redis
+  name: litellm-redis
   labels:
     app.kubernetes.io/name: litellm-redis
 spec:
@@ -17,7 +17,7 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: redis
+  name: litellm-redis
   labels:
     app.kubernetes.io/name: litellm-redis
 spec:

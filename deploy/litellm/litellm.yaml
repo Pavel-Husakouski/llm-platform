@@ -68,7 +68,7 @@ data:
       cache: true
       cache_params:
         type: redis
-        host: redis
+        host: litellm-redis
         port: 6379
         ttl: 3600
         supported_call_types: [acompletion, completion]
@@ -111,7 +111,7 @@ spec:
       annotations:
         # subPath не обновляется на лету: после правки config.yaml поднять revision, чтобы
         # Deployment перезапустил под.
-        config/revision: "3"
+        config/revision: "4"
     spec:
       # Без БД LiteLLM падает на миграциях и уходит в CrashLoopBackOff: ждём Postgres заранее.
       initContainers:
