@@ -47,6 +47,7 @@ LITELLM_URL    := $(URL):30400
 EMBEDDINGS_URL := $(URL):30180
 CLICKHOUSE_URL := $(URL):30123
 CLICKHOUSE_TCP := $(HOST):30900
+POSTGRES_TCP   := $(HOST):30432
 TENANT_PORTS   := $(HOST):30000-30009
 # Скрипты кладут бэкап секретов на хост по ssh и восстанавливают из него (scripts/lib.sh).
 SECRETS_BACKUP := SECRETS_SSH=$(SSH) SECRETS_DIR=$(STORAGE_DIR)/secrets
@@ -61,6 +62,7 @@ LITELLM_URL    := $(URL):14000
 EMBEDDINGS_URL := $(URL):18180
 CLICKHOUSE_URL := $(URL):18123
 CLICKHOUSE_TCP := localhost:19000
+POSTGRES_TCP   := localhost:15432
 TENANT_PORTS   := localhost:13000-13009 (NodePort 30000-30009)
 # В kind данные живут, пока жив кластер: бэкапа секретов нет.
 SECRETS_BACKUP :=
@@ -185,7 +187,7 @@ status:
 	@echo "Embeddings: $(EMBEDDINGS_URL)/health (alias embed в LiteLLM)"
 	@echo "Grafana:    $(GRAFANA_URL) (admin, make grafana-password)"
 	@echo "ClickHouse: $(CLICKHOUSE_URL)/play, native $(CLICKHOUSE_TCP) (clickhouse, make clickhouse-password)"
-	@echo "Postgres:   postgres.platform:5432 (БД тенантов, make postgres-password)"
+	@echo "Postgres:   postgres.platform:5432, NodePort $(POSTGRES_TCP) (БД тенантов, make postgres-password)"
 	@echo "Тенанты:    $(TENANT_PORTS)"
 
 # Virtual key, проект Langfuse и Secret platform-llm в namespace тенанта. Идемпотентна:

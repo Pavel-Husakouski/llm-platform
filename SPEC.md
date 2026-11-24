@@ -9,7 +9,7 @@
 | `argo-rollouts` | `argo-rollouts` | chart argo-rollouts                        |
 | `prometheus`    | `monitoring`    | chart prometheus, только server            |
 | `clickhouse`    | `platform`      | `deploy/clickhouse`, общий                 |
-| `postgres`      | `platform`      | `deploy/postgres`, общий (БД тенантов)     |
+| `postgres`      | `platform`      | `deploy/postgres`, общий (БД тенантов), NodePort :30432 |
 | `langfuse`      | `langfuse`      | chart langfuse, внешний ClickHouse         |
 | `litellm`       | `llm`           | `deploy/litellm`, свой Postgres            |
 | `embeddings`    | `tei`           | `deploy/embeddings`, TEI, alias `embed`    |
@@ -109,6 +109,11 @@ Postgres — один на платформу, в namespace `platform` (`deploy/
 на роль; тенант может поднять таймауты сессионным `SET`. Квот CPU/памяти на базу у vanilla
 Postgres нет: тяжёлому тенанту — отдельный CNPG-кластер в его namespace, платформу менять не
 нужно. LiteLLM-овский `litellm-postgres` — отдельный, с общим не смешивается.
+
+Service `postgres` — ещё и NodePort `:30432` (в kind проброшен на `localhost:15432`): приложения
+тенантов вне кластера (локальный `npm run dev`) ходят в БД напрямую, пароль роли — из
+`llm/tenant-<name>`, как у ClickHouse. Внутри кластера тенант использует `platform-postgres`
+(`postgres.platform:5432`), наружный адрес в контракт не входит.
 
 ## Данные и переустановка k3s
 

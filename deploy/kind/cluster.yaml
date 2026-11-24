@@ -38,6 +38,10 @@ nodes:
       - containerPort: 30900
         hostPort: 19000
         listenAddress: 127.0.0.1
+      # Общий Postgres тенантов (NodePort 30432): localhost:15432, как в docker-compose соседнего проекта
+      - containerPort: 30432
+        hostPort: 15432
+        listenAddress: 127.0.0.1
       # Резерв под API тенантов
       - containerPort: 30000
         hostPort: 13000
