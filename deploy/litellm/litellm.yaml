@@ -47,7 +47,7 @@ data:
       - model_name: embed
         litellm_params:
           model: openai/intfloat/multilingual-e5-base
-          api_base: http://embeddings:80/v1
+          api_base: http://embeddings.tei:80/v1
           api_key: sk-dummy
         model_info:
           mode: embedding
@@ -111,7 +111,7 @@ spec:
       annotations:
         # subPath не обновляется на лету: после правки config.yaml поднять revision, чтобы
         # Deployment перезапустил под.
-        config/revision: "4"
+        config/revision: "5"
     spec:
       # Без БД LiteLLM падает на миграциях и уходит в CrashLoopBackOff: ждём Postgres заранее.
       initContainers:

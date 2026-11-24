@@ -16,7 +16,7 @@ spec:
     path: deploy/embeddings
   destination:
     server: https://kubernetes.default.svc
-    namespace: llm
+    namespace: tei
   syncPolicy:
     automated:
       prune: true
