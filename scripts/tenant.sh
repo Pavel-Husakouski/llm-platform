@@ -4,7 +4,10 @@
 #   2. virtual key LiteLLM с alias <name>, бюджетом на 30 дней и metadata.logging: трейсы его
 #      вызовов уходят в проект тенанта;
 #   3. Secret platform-llm в namespace тенанта (контракт тенанта) и platform-clickhouse, если у
-#      тенанта есть пользователь <name>_writer в общем ClickHouse (deploy/clickhouse).
+#      тенанта есть пользователь <name>_writer в общем ClickHouse (deploy/clickhouse);
+#   4. роль <name> и БД <name> в общем Postgres (deploy/postgres) и Secret platform-postgres.
+#      Роль — OWNER своей БД, REVOKE CONNECT от PUBLIC, CONNECTION LIMIT 20, statement_timeout
+#      60 с. Пароль роли — в llm/tenant-<name> (источник истины, как ключи LiteLLM).
 # Ключи тенанта хранятся в Secret llm/tenant-<name>. Если он уже есть, проект Langfuse не
 # трогается; ключ LiteLLM перевыпускается, только если токена из секрета нет в БД LiteLLM
 # (Postgres LiteLLM пересоздавался), иначе модели ключа сверяются с MODELS и обновляются при
@@ -22,6 +25,7 @@ models=${4:?usage: tenant.sh <name> <namespace> <budget-usd> <model,...>}
 LLM_BASE_URL=http://litellm.llm:4000
 LANGFUSE_HOST=http://langfuse-web.langfuse:3000
 CLICKHOUSE_URL=http://clickhouse.platform:8123
+POSTGRES_HOST=postgres.platform
 
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -51,6 +55,72 @@ publish() {
       "CLICKHOUSE_USER=${name}_writer" \
       "CLICKHOUSE_PASSWORD=$ch_password"
   fi
+  # БД и роль Postgres тенанта: создаёт postgres(), пароль — из llm/tenant-<name>.
+  local pg_pw
+  pg_pw=$(postgres)
+  apply "$ns" platform-postgres \
+    "POSTGRES_HOST=$POSTGRES_HOST" \
+    "POSTGRES_PORT=5432" \
+    "POSTGRES_DB=$name" \
+    "POSTGRES_USER=$name" \
+    "POSTGRES_PASSWORD=$pg_pw" \
+    "DATABASE_URL=postgresql://$name:$pg_pw@$POSTGRES_HOST:5432/$name"
+}
+
+# pg_sql: SQL из stdin суперпользователем общего Postgres (deploy/postgres), в stdout — вывод
+# psql. Пароль — в env пода, не в argv; SQL — во временных файлах, как у остальных секретов.
+pg_sql() {
+  $KUBECTL -n platform exec -i postgres-0 -- \
+    env PGPASSWORD="$(get platform postgres POSTGRES_PASSWORD)" \
+    psql -v ON_ERROR_STOP=1 -tA -U platform -d postgres -f -
+}
+
+# Пароль роли Postgres тенанта из llm/tenant-<name>; нет ключа — генерируется и дописывается
+# (merge: остальные ключи секрета не трогаются).
+pg_password() {
+  local pw
+  pw=$(field llm "tenant-$name" POSTGRES_PASSWORD)
+  if [ -z "$pw" ]; then
+    pw=$(rand 20)
+    $KUBECTL -n llm patch secret "tenant-$name" --type=merge \
+      -p "{\"data\":{\"POSTGRES_PASSWORD\":\"$(printf %s "$pw" | base64 -w0)\"}}" >/dev/null
+    echo "пароль Postgres $name сгенерирован и сохранён в llm/tenant-$name" >&2
+  fi
+  echo "$pw"
+}
+
+# БД и роль Postgres тенанта, печатает пароль роли. Идемпотентно: роль сверяется с паролем из
+# секрета, БД не пересоздаётся. Имя — без дефиса: идентификаторы Postgres без кавычек (то же
+# ограничение, что у ClickHouse). pgvector тенанту даёт template1, отдельно создавать не нужно.
+postgres() {
+  [[ $name =~ - ]] && die "Postgres: NAME=$name с дефисом не подходит, БД и роль Postgres без кавычек"
+  local pw exists
+  pw=$(pg_password)
+  cat > "$tmp/pg-create.sql" <<SQL
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$name') THEN
+    CREATE ROLE $name;
+  END IF;
+END
+\$\$;
+ALTER ROLE $name WITH LOGIN PASSWORD '$pw' CONNECTION LIMIT 20;
+ALTER ROLE $name SET statement_timeout = '60s';
+ALTER ROLE $name SET idle_in_transaction_session_timeout = '5min';
+SQL
+  pg_sql < "$tmp/pg-create.sql" >/dev/null \
+    || die "Postgres: роль $name не создана (postgres.platform недоступен?)"
+  exists=$(pg_sql <<< "SELECT 1 FROM pg_database WHERE datname = '$name'" \
+    || die "Postgres: postgres.platform недоступен")
+  if [ -z "$exists" ]; then
+    printf 'CREATE DATABASE %s OWNER %s;\nREVOKE CONNECT ON DATABASE %s FROM PUBLIC;\n' \
+      "$name" "$name" "$name" > "$tmp/pg-db.sql"
+    pg_sql < "$tmp/pg-db.sql" >/dev/null || die "Postgres: БД $name не создана"
+    echo "БД Postgres $name (OWNER $name, vector из template1)"
+  else
+    echo "БД Postgres $name уже есть, роль сверена с паролем из секрета"
+  fi
+  echo "$pw"
 }
 
 # generate_key <public-key> <secret-key>: virtual key LiteLLM с alias <name>, бюджетом на 30 дней

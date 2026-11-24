@@ -51,6 +51,13 @@ apply platform clickhouse-auth "password=$(get langfuse langfuse-clickhouse-auth
 # пользователя. Новый пользователь — новый ключ здесь, существующие пароли не меняются.
 passwords platform clickhouse-users layers_writer grafana_ro
 
+# Общий Postgres тенантов (deploy/postgres): суперпользователь и его пароль. Роли и базы
+# тенантов создаёт tenant.sh, пароли ролей — в Secret llm/tenant-<name>.
+once platform postgres \
+  POSTGRES_USER=platform \
+  "POSTGRES_PASSWORD=$(rand 20)" \
+  POSTGRES_DB=postgres
+
 # Grafana: admin и пароль grafana_ro для источника данных ClickHouse.
 once monitoring grafana-admin admin-user=admin "admin-password=$(rand 12)"
 apply monitoring grafana-clickhouse \

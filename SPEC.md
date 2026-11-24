@@ -9,6 +9,7 @@
 | `argo-rollouts` | `argo-rollouts` | chart argo-rollouts                        |
 | `prometheus`    | `monitoring`    | chart prometheus, только server            |
 | `clickhouse`    | `platform`      | `deploy/clickhouse`, общий                 |
+| `postgres`      | `platform`      | `deploy/postgres`, общий (БД тенантов)     |
 | `langfuse`      | `langfuse`      | chart langfuse, внешний ClickHouse         |
 | `litellm`       | `llm`           | `deploy/litellm`, свой Postgres            |
 | `embeddings`    | `llm`           | `deploy/embeddings`, TEI, alias `embed`    |
@@ -50,8 +51,20 @@ Root-app платформы называется `llm-platform`, не `root`: т
 | `CLICKHOUSE_USER`     | `<name>_writer`                                 |
 | `CLICKHOUSE_PASSWORD` | из `platform/clickhouse-users`                  |
 
-Имя тенанта с ClickHouse — без `-`: пароль попадает в под ClickHouse переменной
-`CH_PASSWORD_<user>`.
+`make tenant` также создаёт в общем Postgres (`deploy/postgres`) роль `<name>` и базу `<name>`
+(роль — OWNER) и кладёт рядом Secret `platform-postgres`:
+
+| Ключ               | Значение                                             |
+|--------------------|------------------------------------------------------|
+| `POSTGRES_HOST`    | `postgres.platform`                                  |
+| `POSTGRES_PORT`    | `5432`                                               |
+| `POSTGRES_DB`      | `<name>`                                             |
+| `POSTGRES_USER`    | `<name>`                                             |
+| `POSTGRES_PASSWORD`| из `llm/tenant-<name>`                               |
+| `DATABASE_URL`     | `postgresql://<name>:<пароль>@postgres.platform:5432/<name>` |
+
+Имя тенанта с ClickHouse или Postgres — без `-`: пароль попадает в под ClickHouse переменной
+`CH_PASSWORD_<user>`, а БД и роль Postgres — идентификаторы без кавычек.
 
 - Трейс каждого вызова пишет LiteLLM в проект Langfuse тенанта: у virtual key в
   `metadata.logging` задан колбэк `langfuse_otel` с ключами этого проекта. В проект
@@ -80,6 +93,22 @@ Grafana: источники `prometheus` и `clickhouse` (uid — контрак
 по NodePort) создаёт папку `<p>`, service account `<p>` с ролью Viewer и Edit на эту папку и
 токен в `monitoring/grafana-token-<p>`; если секрет есть — печатает сохранённый.
 
+## Общий Postgres
+
+Postgres — один на платформу, в namespace `platform` (`deploy/postgres`), образ
+`pgvector/pgvector` — тот же, что в docker-compose соседнего проекта: дампы совместимы в обе
+стороны. PostSync Job `postgres-init` держит `CREATE EXTENSION vector` в `template1`: каждая
+новая БД наследует расширение. Суперпользователь и пароль — Secret `platform/postgres`
+(`make secret`), пароль роли тенанта — в `llm/tenant-<name>`.
+
+Роль и БД тенанта создаёт `make tenant` идемпотентно (роль сверяется с паролем из секрета,
+БД не пересоздаётся), удаляет `make tenant-delete` (`DROP DATABASE ... WITH (FORCE)`,
+`DROP ROLE`). Изоляция тенантов: `REVOKE CONNECT ... FROM PUBLIC` на каждую БД,
+`CONNECTION LIMIT 20`, `statement_timeout` 60 с и `idle_in_transaction_session_timeout` 5 мин
+на роль; тенант может поднять таймауты сессионным `SET`. Квот CPU/памяти на базу у vanilla
+Postgres нет: тяжёлому тенанту — отдельный CNPG-кластер в его namespace, платформу менять не
+нужно. LiteLLM-овский `litellm-postgres` — отдельный, с общим не смешивается.
+
 ## Данные и переустановка k3s
 
 `/srv/llm-platform` на хосте вне каталогов k3s, `k3s-uninstall` его не трогает:
@@ -95,8 +124,8 @@ Grafana: источники `prometheus` и `clickhouse` (uid — контрак
   пароли Postgres заданы при инициализации, данные Langfuse зашифрованы `encryption-key`.
 
 Не переживают переустановку: метрики Prometheus (без тома), состояние Argo CD (восстанавливается
-из git, пароль admin новый), `platform-llm` и `platform-clickhouse` в namespace тенантов
-(`make tenant` копирует заново).
+из git, пароль admin новый), `platform-llm`, `platform-clickhouse` и `platform-postgres` в
+namespace тенантов (`make tenant` копирует заново).
 
 ## Секреты
 
@@ -113,10 +142,12 @@ DeepSeek берётся из `DEEPSEEK_API_KEY` и обновляется при
   ключи дописываются, существующие не меняются;
 - `platform/clickhouse-auth`: копия пароля `clickhouse` из `langfuse/langfuse-clickhouse-auth`
   (тот нужен чарту Langfuse), `make secret` сверяет копию с источником при каждом запуске;
+- `platform/postgres`: суперпользователь общего Postgres тенантов, пароли ролей тенантов — в
+  `llm/tenant-<name>`;
 - `monitoring/grafana-admin`, `monitoring/grafana-clickhouse` (пароль `grafana_ro`),
   `monitoring/grafana-token-<p>`;
-- `llm/tenant-<name>`: ключи тенанта (virtual key, id и API-ключи проекта Langfuse), источник
-  для `platform-llm`.
+- `llm/tenant-<name>`: ключи тенанта (virtual key, id и API-ключи проекта Langfuse, пароль
+  роли Postgres), источник для `platform-llm` и `platform-postgres`.
 
 ## make tenant
 
@@ -128,13 +159,15 @@ DeepSeek берётся из `DEEPSEEK_API_KEY` и обновляется при
    перевыпускается только когда токена из секрета нет в БД LiteLLM (`/key/info?key=<token>` —
    404, бывает после пересоздания Postgres LiteLLM), иначе модели ключа сверяются с `MODELS` и
    обновляются при расхождении (бюджет не трогается — для него `make llm-budget`). Затем
-   копируется `platform-llm`. Так `make tenant` идемпотентна, чинит потерянные ключи и держит
-   модели ключа в заявленном состоянии.
+   копируются `platform-llm` и `platform-postgres`. Так `make tenant` идемпотентна, чинит
+   потерянные ключи и держит модели ключа в заявленном состоянии.
 2. Иначе вход в Langfuse (`GET /api/auth/csrf`, `POST /api/auth/callback/credentials`) и
    tRPC `projects.create` и `projectApiKeys.create`.
 3. LiteLLM `POST /key/generate` с `key_alias`, `models`, `max_budget`, `budget_duration` и
    `metadata.logging`.
 4. Ключи сохраняются в `llm/tenant-<name>`, затем пишется `platform-llm`.
+5. Роль и БД `<name>` в общем Postgres (идемпотентно, пароль роли — из `llm/tenant-<name>`),
+   затем пишется `platform-postgres`.
 
 Если шаги 2–4 падают, созданные проект и ключ удаляются, и повторный запуск начинает заново.
 
@@ -151,11 +184,12 @@ Langfuse прогнать `make tenant` на тестовом тенанте.
 1. LiteLLM `POST /key/delete` с ключом из `llm/tenant-<name>`.
 2. Вход в Langfuse и tRPC `projects.delete`. Langfuse помечает проект удалённым, его трейсы
    стирает worker асинхронно.
-3. Namespace тенанта удаляется целиком. Если это namespace платформы, удаляется только
-   `platform-llm`; если его делят несколько тенантов, он не трогается: `platform-llm` в нём
-   один на всех.
-4. Secret `llm/tenant-<name>`.
+3. БД и роль `<name>` в общем Postgres: `DROP DATABASE ... WITH (FORCE)` и `DROP ROLE`.
+4. Namespace тенанта удаляется целиком. Если это namespace платформы, удаляются только
+   `platform-llm`, `platform-clickhouse` и `platform-postgres`; если его делят несколько
+   тенантов, он не трогается: `platform-llm` в нём один на всех.
+5. Secret `llm/tenant-<name>`.
 
-После шагов 1 и 2 их поле (`LLM_API_KEY`, `LANGFUSE_PROJECT_ID`) удаляется из
-`llm/tenant-<name>`, поэтому повторный запуск после сбоя продолжает с невыполненного шага.
+После шагов 1–3 их поле (`LLM_API_KEY`, `LANGFUSE_PROJECT_ID`, `POSTGRES_PASSWORD`) удаляется
+из `llm/tenant-<name>`, поэтому повторный запуск после сбоя продолжает с невыполненного шага.
 Application тенанта в Argo CD скрипт не трогает.

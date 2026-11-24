@@ -27,7 +27,7 @@ TOOLS_DIR      ?= $(HOME)/.local/bin
 REVISION       ?= main
 WAIT_TIMEOUT   ?= 900
 # Application платформы: make wait не ждёт Application тенантов.
-APPS           := llm-platform storage argo-rollouts prometheus clickhouse langfuse litellm embeddings grafana
+APPS           := llm-platform storage argo-rollouts prometheus clickhouse postgres langfuse litellm embeddings grafana
 
 # make tenant NAME=agent NS=agent BUDGET=1 MODELS=deepseek-flash
 NS             ?= $(NAME)
@@ -72,7 +72,7 @@ KUBECTL := kubectl --context $(CONTEXT)
 HELM    := helm --kube-context $(CONTEXT)
 
 .PHONY: up down cluster secret argocd root wait status tenant tenant-key tenant-delete llm-budget tools \
-  argocd-password langfuse-password litellm-password clickhouse-password grafana-password \
+  argocd-password langfuse-password litellm-password clickhouse-password postgres-password grafana-password \
   grafana-token k3s-install k3s-storage k3s-uninstall kubeconfig
 
 up: cluster secret argocd root wait status
@@ -177,6 +177,7 @@ status:
 	@$(KUBECTL) get pods -n llm
 	@$(KUBECTL) get pods -n langfuse
 	@$(KUBECTL) get pods -n monitoring
+	@$(KUBECTL) get pods -n platform
 	@echo "Argo CD UI: $(ARGOCD_URL) (admin, пароль: make argocd-password)"
 	@echo "Prometheus: $(PROMETHEUS_URL)"
 	@echo "Langfuse:   $(LANGFUSE_URL) (admin@llm-platform.local, make langfuse-password)"
@@ -184,6 +185,7 @@ status:
 	@echo "Embeddings: $(EMBEDDINGS_URL)/health (alias embed в LiteLLM)"
 	@echo "Grafana:    $(GRAFANA_URL) (admin, make grafana-password)"
 	@echo "ClickHouse: $(CLICKHOUSE_URL)/play, native $(CLICKHOUSE_TCP) (clickhouse, make clickhouse-password)"
+	@echo "Postgres:   postgres.platform:5432 (БД тенантов, make postgres-password)"
 	@echo "Тенанты:    $(TENANT_PORTS)"
 
 # Virtual key, проект Langfuse и Secret platform-llm в namespace тенанта. Идемпотентна:
@@ -235,6 +237,10 @@ clickhouse-password:
 	else \
 	  $(KUBECTL) -n platform get secret clickhouse-users -o jsonpath='{.data.$(CH_USER)}'; \
 	fi | base64 -d; echo
+
+# Пароль суперпользователя общего Postgres тенантов (Secret platform/postgres).
+postgres-password:
+	@$(KUBECTL) -n platform get secret postgres -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d; echo
 
 grafana-password:
 	@$(KUBECTL) -n monitoring get secret grafana-admin \

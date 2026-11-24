@@ -2,7 +2,8 @@
 
 Общая LLM-инфраструктура для локальных проектов в k3s на выделенном хосте (или в локальном
 kind): LiteLLM (шлюз к провайдерам, virtual keys с бюджетом), Langfuse (трейсы и score) на
-общем ClickHouse (он же для баз проектов), Prometheus, Grafana и Argo Rollouts.
+общем ClickHouse, общие ClickHouse и Postgres (pgvector) для баз проектов, Prometheus,
+Grafana и Argo Rollouts.
 Всё ставит Argo CD из этого репо. Проекты подключаются как тенанты: каждый получает свой
 virtual key и свой проект Langfuse, а свои Application кладёт в тот же Argo CD.
 
@@ -26,7 +27,8 @@ make k3s-uninstall            # удаляет k3s с хоста; данные �
 
 ### Данные переживают переустановку k3s
 
-Тома платформы (ClickHouse, оба Postgres, Redis и S3 Langfuse, Grafana) — на StorageClass
+Тома платформы (ClickHouse, Postgres — LiteLLM, Langfuse и общий, Redis и S3 Langfuse,
+Grafana) — на StorageClass
 `platform` (`deploy/storage`): каталог `/srv/llm-platform/volumes/<ns>/<pvc>/` на хосте,
 `Retain`. Секреты, без которых эти данные не прочитать, `make secret`, `make tenant`,
 `make tenant-delete` и `make grafana-token` копируют на хост в `/srv/llm-platform/secrets/`
@@ -54,6 +56,7 @@ TARGET=kind` удаляет kind-кластер).
 | LiteLLM    | http://HOST:30400/ui            | http://localhost:14000/ui           | admin, `make litellm-password` (master key)   |
 | Embeddings | http://HOST:30180/health        | http://localhost:18180/health       | TEI, в LiteLLM alias `embed`                  |
 | ClickHouse | http://HOST:30123/play, :30900  | http://localhost:18123/play, :19000 | clickhouse, `make clickhouse-password`        |
+| Postgres   | postgres.platform:5432 (в кластере) | postgres.platform:5432 (в кластере) | роль `<name>`, пароль в `platform-postgres`   |
 
 В k3s сервисы открыты всей LAN без TLS. Для API тенантов зарезервированы NodePort 30000–30009;
 в kind они проброшены на localhost:13000–13009, потому что порты kind задаются только при
@@ -81,8 +84,12 @@ make tenant NAME=agent NS=agent BUDGET=1 MODELS=deepseek-flash
 
 - создаёт проект Langfuse `agent` с API-ключами и virtual key LiteLLM с alias `agent`,
   бюджетом $1 на 30 дней и доступом к перечисленным моделям;
-- пишет Secret `platform-llm` в namespace `agent`, проект подключает его через `envFrom`;
-- повторный запуск ключи не пересоздаёт, только заново копирует `platform-llm`.
+- создаёт в общем Postgres роль `agent` и базу `agent` (pgvector из template1) и пишет
+  Secrets `platform-llm` и `platform-postgres` в namespace `agent` — проект подключает их
+  через `envFrom`;
+- повторный запуск ключи не пересоздаёт: проект Langfuse не трогается, ключ LiteLLM
+  перевыпускается, только если его нет в БД, роль и пароль Postgres сверяются, `platform-*`
+  копируются заново.
 
 `NS` по умолчанию равен `NAME`, `BUDGET=1`, `MODELS=deepseek-flash` (список через запятую).
 
@@ -96,9 +103,9 @@ make tenant-delete NAME=agent                 # только показывае�
 make tenant-delete NAME=agent CONFIRM=agent   # удаляет
 ```
 
-Удаляются ключ LiteLLM, проект Langfuse с трейсами, namespace тенанта со всем содержимым и
-Secret `llm/tenant-<name>`. Application тенанта в Argo CD удалите заранее, иначе Argo CD
-создаст namespace заново.
+Удаляются ключ LiteLLM, проект Langfuse с трейсами, БД и роль Postgres, namespace тенанта
+со всем содержимым и Secret `llm/tenant-<name>`. Application тенанта в Argo CD удалите
+заранее, иначе Argo CD создаст namespace заново.
 
 ## ClickHouse и Grafana
 
@@ -130,6 +137,18 @@ curl -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
 `scripts/platform-secrets.sh` (`passwords platform clickhouse-users ...`), база в Job
 `clickhouse-databases`, поднять `config/revision`, затем `make secret` и `make tenant` — тот
 положит Secret `platform-clickhouse` в namespace проекта.
+
+## Общий Postgres
+
+Postgres общий: `pgvector/pgvector:pg17` в namespace `platform` (`deploy/postgres`), тот же
+образ, что в docker-compose соседнего проекта, — дампы переносятся в обе стороны. `make tenant`
+создаёт роль `<name>` и базу `<name>` (роль — OWNER, `REVOKE CONNECT` от PUBLIC,
+`CONNECTION LIMIT 20`, `statement_timeout` 60 с) и кладёт в namespace тенанта Secret
+`platform-postgres` с `POSTGRES_HOST/PORT/DB/USER/PASSWORD` и готовым `DATABASE_URL`.
+pgvector есть в каждой базе без `CREATE EXTENSION` (PostSync Job держит его в template1).
+Пароль роли — в `llm/tenant-<name>`, роль и базу удаляет `make tenant-delete` (`DROP DATABASE
+... WITH (FORCE)`). Суперпользователь — Secret `platform/postgres`, пароль:
+`make postgres-password`.
 
 ## Модели
 

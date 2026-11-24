@@ -3,13 +3,15 @@
 # показывает, что будет удалено. Обратное make tenant:
 #   1. virtual key LiteLLM тенанта;
 #   2. проект Langfuse тенанта вместе с трейсами и API-ключами;
-#   3. namespace тенанта со всем содержимым. Платформенный namespace не удаляется, только
-#      Secret platform-llm (и platform-clickhouse) в нём; namespace, который делят несколько тенантов, не трогается
-#      вовсе: platform-llm в нём один на всех;
-#   4. Secret llm/tenant-<name>.
+#   3. БД и роль <name> в общем Postgres (DROP DATABASE ... WITH (FORCE), DROP ROLE);
+#   4. namespace тенанта со всем содержимым. Платформенный namespace не удаляется, только
+#      Secret platform-llm (platform-clickhouse и platform-postgres) в нём; namespace, который
+#      делят несколько тенантов, не трогается вовсе: platform-llm в нём один на всех;
+#   5. Secret llm/tenant-<name>.
 # Данные берутся из llm/tenant-<name>. После каждого шага его поле удаляется из Secret, поэтому
 # повторный запуск после сбоя продолжает с невыполненного шага.
-# База и пользователь тенанта в ClickHouse описаны в deploy/clickhouse, их убирают там.
+# База и пользователь тенанта в ClickHouse описаны в deploy/clickhouse, их убирают там; БД и
+# роль Postgres создал make tenant императивно — их удаляет этот скрипт.
 # Application тенанта в Argo CD не трогает: его нужно удалить до этого, иначе Argo CD создаст
 # namespace заново.
 set -euo pipefail
@@ -28,7 +30,7 @@ project_id=$(field llm "tenant-$name" LANGFUSE_PROJECT_ID)
 ns=$(field llm "tenant-$name" NAMESPACE)
 
 # Namespace удаляется целиком, только если он принадлежит одному этому тенанту.
-platform_ns=' default kube-system kube-public kube-node-lease argocd argo-rollouts monitoring llm langfuse '
+platform_ns=' default kube-system kube-public kube-node-lease argocd argo-rollouts monitoring llm langfuse platform '
 shared=''
 if [ -n "$ns" ]; then
   for s in $($KUBECTL -n llm get secret -o name | sed -n 's#^secret/tenant-##p'); do
@@ -42,12 +44,13 @@ whole_ns=''
 echo "тенант $name:"
 [ -n "$key" ] && echo "  - ключ LiteLLM $name"
 [ -n "$project_id" ] && echo "  - проект Langfuse $name ($project_id) вместе с трейсами"
+[ -n "$(field llm "tenant-$name" POSTGRES_PASSWORD)" ] && echo "  - БД и роль Postgres $name"
 if [ -n "$whole_ns" ]; then
   echo "  - namespace $ns со всем содержимым"
 elif [ -n "$shared" ]; then
   echo "  - namespace $ns и platform-llm в нём не трогаются, их используют:$shared"
 elif [ -n "$ns" ]; then
-  echo "  - Secret $ns/platform-llm и $ns/platform-clickhouse (namespace $ns платформенный, остаётся)"
+  echo "  - Secret $ns/platform-llm, platform-clickhouse и platform-postgres (namespace $ns платформенный, остаётся)"
 fi
 echo "  - Secret llm/tenant-$name"
 
@@ -78,12 +81,22 @@ if [ -n "$project_id" ]; then
   echo "проект Langfuse $name удалён"
 fi
 
+if [ -n "$(field llm "tenant-$name" POSTGRES_PASSWORD)" ] && [[ ! $name =~ - ]]; then
+  $KUBECTL -n platform exec postgres-0 -- \
+    env PGPASSWORD="$(get platform postgres POSTGRES_PASSWORD)" \
+    psql -v ON_ERROR_STOP=1 -U platform -d postgres \
+    -c "DROP DATABASE IF EXISTS $name WITH (FORCE); DROP ROLE IF EXISTS $name" >/dev/null \
+    || die "Postgres: БД и роль $name не удалены"
+  drop POSTGRES_PASSWORD
+  echo "БД и роль Postgres $name удалены"
+fi
+
 if [ -n "$whole_ns" ]; then
   $KUBECTL delete namespace "$ns" --ignore-not-found --timeout=5m >/dev/null
   echo "namespace $ns удалён"
 elif [ -n "$ns" ] && [ -z "$shared" ]; then
-  $KUBECTL -n "$ns" delete secret platform-llm platform-clickhouse --ignore-not-found >/dev/null
-  echo "Secret $ns/platform-llm и $ns/platform-clickhouse удалены"
+  $KUBECTL -n "$ns" delete secret platform-llm platform-clickhouse platform-postgres --ignore-not-found >/dev/null
+  echo "Secret $ns/platform-llm, $ns/platform-clickhouse и $ns/platform-postgres удалены"
 fi
 
 $KUBECTL -n llm delete secret "tenant-$name" >/dev/null
