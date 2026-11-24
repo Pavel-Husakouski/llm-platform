@@ -1,12 +1,14 @@
 # Общий ClickHouse платформы. В базе default — трейсы, observations и scores Langfuse, базы
-# тенантов (layers) — рядом. Живёт в namespace langfuse, потому что там его PVC с данными
-# Langfuse. Один узел без Keeper и operator: chart Langfuse ставит ClickHouse через ClickHouse
+# тенантов (layers) — рядом. Живёт в namespace platform — общий data plane, рядом общий Postgres
+# тенантов. Один узел без Keeper и operator: chart Langfuse ставит ClickHouse через ClickHouse
 # operator с cert-manager, для стенда это три лишних компонента. Langfuse работает с ним как с
 # внешним в режиме CLICKHOUSE_CLUSTER_ENABLED=false.
 #
 # Пользователи, права и квоты — в platform-users.xml ниже. Пароли — в Secret clickhouse-users
 # (создаёт make secret), ключ = имя пользователя; в под они попадают как env
-# CH_PASSWORD_<user>. Базы создаёт Job clickhouse-databases после каждого sync.
+# CH_PASSWORD_<user>. Пароль администратора — в Secret clickhouse-auth, копия пароля чарта
+# Langfuse (langfuse/langfuse-clickhouse-auth). Базы создаёт Job clickhouse-databases после
+# каждого sync.
 #
 # Профиль ClickHouse под один узел стенда. По умолчанию ClickHouse пишет в system.* метрики
 # раз в секунду, сэмплы профайлера, свой лог и историю merge: в простое это ~60–100m CPU и
@@ -148,7 +150,7 @@ metadata:
     app.kubernetes.io/name: clickhouse
 spec:
   # NodePort: HTTP и play на :30123, clickhouse-client на :30900 (в kind localhost:18123, :19000).
-  # В кластере — http://clickhouse.langfuse:8123.
+  # В кластере — http://clickhouse.platform:8123.
   type: NodePort
   selector:
     app.kubernetes.io/name: clickhouse
@@ -194,8 +196,9 @@ spec:
             - name: CLICKHOUSE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  # Секреты создаёт make secret, в git их нет.
-                  name: langfuse-clickhouse-auth
+                  # Секреты создаёт make secret, в git их нет. Пароль тот же, что у чарта
+                  # Langfuse в langfuse/langfuse-clickhouse-auth.
+                  name: clickhouse-auth
                   key: password
           # Пароли пользователей из platform-users.xml: CH_PASSWORD_<user>.
           envFrom:
@@ -280,7 +283,7 @@ spec:
             - name: CLICKHOUSE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: langfuse-clickhouse-auth
+                  name: clickhouse-auth
                   key: password
           resources:
             requests: { cpu: 10m, memory: 64Mi }

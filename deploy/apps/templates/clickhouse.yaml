@@ -1,5 +1,6 @@
 # Общий ClickHouse платформы (Langfuse и тенанты): свои манифесты, поднимается раньше chart
-# Langfuse (миграции на старте). Namespace langfuse — там PVC с данными Langfuse.
+# Langfuse (миграции на старте). Namespace platform — общий data plane: рядом общий Postgres
+# тенантов.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -17,7 +18,7 @@ spec:
     path: deploy/clickhouse
   destination:
     server: https://kubernetes.default.svc
-    namespace: langfuse
+    namespace: platform
   syncPolicy:
     automated:
       prune: true

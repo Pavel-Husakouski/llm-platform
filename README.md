@@ -102,9 +102,10 @@ Secret `llm/tenant-<name>`. Application тенанта в Argo CD удалите
 
 ## ClickHouse и Grafana
 
-ClickHouse общий: в базе `default` — данные Langfuse, рядом базы проектов. Пользователи, права и
-квоты описаны в `deploy/clickhouse/clickhouse.yaml` (`platform-users.xml`), пароли — в Secret
-`langfuse/clickhouse-users`, их создаёт `make secret`.
+ClickHouse общий: в базе `default` — данные Langfuse, рядом базы проектов. Живёт в namespace
+`platform` — общем data plane платформы. Пользователи, права и квоты описаны в
+`deploy/clickhouse/clickhouse.yaml` (`platform-users.xml`), пароли — в Secret
+`platform/clickhouse-users`, их создаёт `make secret`.
 
 | Пользователь    | Права                                   | Пароль                                           |
 |-----------------|-----------------------------------------|--------------------------------------------------|
@@ -126,7 +127,7 @@ curl -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
 Токен хранится в `monitoring/grafana-token-<name>`, повторный запуск печатает его же.
 
 Новый проект в ClickHouse: пользователь `<name>_writer` в `platform-users.xml`, ключ в
-`scripts/platform-secrets.sh` (`passwords langfuse clickhouse-users ...`), база в Job
+`scripts/platform-secrets.sh` (`passwords platform clickhouse-users ...`), база в Job
 `clickhouse-databases`, поднять `config/revision`, затем `make secret` и `make tenant` — тот
 положит Secret `platform-clickhouse` в namespace проекта.
 

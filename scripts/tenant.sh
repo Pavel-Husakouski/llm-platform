@@ -21,7 +21,7 @@ models=${4:?usage: tenant.sh <name> <namespace> <budget-usd> <model,...>}
 # Адреса, которые видят поды внутри кластера.
 LLM_BASE_URL=http://litellm.llm:4000
 LANGFUSE_HOST=http://langfuse-web.langfuse:3000
-CLICKHOUSE_URL=http://clickhouse.langfuse:8123
+CLICKHOUSE_URL=http://clickhouse.platform:8123
 
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -41,9 +41,9 @@ publish() {
     "LANGFUSE_PUBLIC_KEY=$(get llm "tenant-$name" LANGFUSE_PUBLIC_KEY)" \
     "LANGFUSE_SECRET_KEY=$(get llm "tenant-$name" LANGFUSE_SECRET_KEY)"
   # База <name> и пользователь <name>_writer описаны в deploy/clickhouse, пароль — в
-  # langfuse/clickhouse-users. Нет пользователя — нет и секрета.
+  # platform/clickhouse-users. Нет пользователя — нет и секрета.
   local ch_password
-  ch_password=$(field langfuse clickhouse-users "${name}_writer" 2>/dev/null || true)
+  ch_password=$(field platform clickhouse-users "${name}_writer" 2>/dev/null || true)
   if [ -n "$ch_password" ]; then
     apply "$ns" platform-clickhouse \
       "CLICKHOUSE_URL=$CLICKHOUSE_URL" \

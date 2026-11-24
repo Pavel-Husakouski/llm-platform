@@ -231,9 +231,9 @@ litellm-password:
 # пользователя из deploy/clickhouse: make clickhouse-password CH_USER=layers_writer
 clickhouse-password:
 	@if [ -z '$(CH_USER)' ]; then \
-	  $(KUBECTL) -n langfuse get secret langfuse-clickhouse-auth -o jsonpath='{.data.password}'; \
+	  $(KUBECTL) -n platform get secret clickhouse-auth -o jsonpath='{.data.password}'; \
 	else \
-	  $(KUBECTL) -n langfuse get secret clickhouse-users -o jsonpath='{.data.$(CH_USER)}'; \
+	  $(KUBECTL) -n platform get secret clickhouse-users -o jsonpath='{.data.$(CH_USER)}'; \
 	fi | base64 -d; echo
 
 grafana-password:

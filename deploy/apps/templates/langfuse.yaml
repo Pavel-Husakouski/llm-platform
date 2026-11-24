@@ -78,10 +78,11 @@ spec:
           dataStorage:
             requestedSize: 1Gi
             className: platform
-        # Общий ClickHouse платформы из deploy/clickhouse, без operator и Keeper.
+        # Общий ClickHouse платформы из deploy/clickhouse (namespace platform), без operator
+        # и Keeper.
         clickhouse:
           deploy: false
-          host: clickhouse
+          host: clickhouse.platform
           auth:
             username: clickhouse
             existingSecret: langfuse-clickhouse-auth

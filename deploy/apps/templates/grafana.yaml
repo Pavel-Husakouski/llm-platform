@@ -67,7 +67,7 @@ spec:
                 type: grafana-clickhouse-datasource
                 editable: false
                 jsonData:
-                  host: clickhouse.langfuse
+                  host: clickhouse.platform
                   port: 8123
                   protocol: http
                   username: grafana_ro

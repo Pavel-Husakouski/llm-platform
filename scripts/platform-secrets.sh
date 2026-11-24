@@ -10,7 +10,7 @@ source "$(dirname "$0")/lib.sh"
 # После переустановки k3s: секреты из бэкапа на хосте, данные в томах зашифрованы и закрыты ими.
 restore_secrets
 
-for ns in llm langfuse monitoring; do namespace "$ns"; done
+for ns in llm langfuse monitoring platform; do namespace "$ns"; done
 
 if [ -n "${DEEPSEEK_API_KEY:-}" ]; then
   apply llm deepseek "DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY"
@@ -42,15 +42,19 @@ once langfuse langfuse-redis-auth "default=$(rand 20)"
 s3=$(rand 20)
 s3_config='{"identities":[{"name":"langfuse","credentials":[{"accessKey":"langfuse","secretKey":"'$s3'"}],"actions":["Admin","Read","Write","List","Tagging"]}]}'
 once langfuse langfuse-s3-auth accessKey=langfuse "secretKey=$s3" "seaweedfs_s3_config=$s3_config"
+# Пароль clickhouse общий с чартом Langfuse: чарт читает langfuse/langfuse-clickhouse-auth, под
+# ClickHouse в platform — платформенную копию того же пароля (apply, а не once: копия всегда
+# сверяется с источником).
 once langfuse langfuse-clickhouse-auth "password=$(rand 20)"
+apply platform clickhouse-auth "password=$(get langfuse langfuse-clickhouse-auth password)"
 # Пароли пользователей общего ClickHouse из deploy/clickhouse (platform-users.xml), ключ = имя
 # пользователя. Новый пользователь — новый ключ здесь, существующие пароли не меняются.
-passwords langfuse clickhouse-users layers_writer grafana_ro
+passwords platform clickhouse-users layers_writer grafana_ro
 
 # Grafana: admin и пароль grafana_ro для источника данных ClickHouse.
 once monitoring grafana-admin admin-user=admin "admin-password=$(rand 12)"
 apply monitoring grafana-clickhouse \
-  "GRAFANA_RO_PASSWORD=$(get langfuse clickhouse-users grafana_ro)"
+  "GRAFANA_RO_PASSWORD=$(get platform clickhouse-users grafana_ro)"
 
 # LiteLLM: master key и пароль его Postgres. Virtual keys тенантов выдаёт tenant.sh.
 once llm litellm \

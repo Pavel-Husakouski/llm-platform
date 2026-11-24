@@ -8,7 +8,7 @@
 | `storage`       | —               | `deploy/storage`, StorageClass `platform`  |
 | `argo-rollouts` | `argo-rollouts` | chart argo-rollouts                        |
 | `prometheus`    | `monitoring`    | chart prometheus, только server            |
-| `clickhouse`    | `langfuse`      | `deploy/clickhouse`, общий                 |
+| `clickhouse`    | `platform`      | `deploy/clickhouse`, общий                 |
 | `langfuse`      | `langfuse`      | chart langfuse, внешний ClickHouse         |
 | `litellm`       | `llm`           | `deploy/litellm`, свой Postgres            |
 | `embeddings`    | `llm`           | `deploy/embeddings`, TEI, alias `embed`    |
@@ -45,10 +45,10 @@ Root-app платформы называется `llm-platform`, не `root`: т
 
 | Ключ                  | Значение                                        |
 |-----------------------|-------------------------------------------------|
-| `CLICKHOUSE_URL`      | `http://clickhouse.langfuse:8123`               |
+| `CLICKHOUSE_URL`      | `http://clickhouse.platform:8123`               |
 | `CLICKHOUSE_DATABASE` | `<name>`                                        |
 | `CLICKHOUSE_USER`     | `<name>_writer`                                 |
-| `CLICKHOUSE_PASSWORD` | из `langfuse/clickhouse-users`                  |
+| `CLICKHOUSE_PASSWORD` | из `platform/clickhouse-users`                  |
 
 Имя тенанта с ClickHouse — без `-`: пароль попадает в под ClickHouse переменной
 `CH_PASSWORD_<user>`.
@@ -64,7 +64,8 @@ Root-app платформы называется `llm-platform`, не `root`: т
 
 ## ClickHouse и Grafana
 
-ClickHouse — один на платформу, в namespace `langfuse` (там PVC с данными Langfuse). Пользователи,
+ClickHouse — один на платформу, в namespace `platform` (общий data plane, рядом общий Postgres
+тенантов, там его PVC с трейсами Langfuse и базами тенантов). Пользователи,
 профили и квоты — XML в ConfigMap `clickhouse-config`, пароли — из Secret `clickhouse-users`
 через env `CH_PASSWORD_<user>` (`<password from_env=.../>`). Базы создаёт PostSync Job
 `clickhouse-databases` (`CREATE DATABASE IF NOT EXISTS`). Ручных `CREATE USER` нет.
@@ -87,8 +88,8 @@ Grafana: источники `prometheus` и `clickhouse` (uid — контрак
   `make k3s-storage`). StorageClass `platform` (Application `storage`, sync-wave -2): тот же
   local-path, `pathPattern: <ns>/<pvc>/` и `Retain`. PVC с тем же именем после переустановки
   получает тот же каталог с данными.
-- `secrets/secrets.json` — бэкап секретов платформы: Opaque в `llm`, `langfuse`, `monitoring` без
-  метки `app.kubernetes.io/instance` (те создают чарты). Пишется по ssh в конце `make secret`,
+- `secrets/secrets.json` — бэкап секретов платформы: Opaque в `llm`, `langfuse`, `monitoring`,
+  `platform` без метки `app.kubernetes.io/instance` (те создают чарты). Пишется по ssh в конце `make secret`,
   `tenant`, `tenant-delete`, `grafana-token`; `make secret` в начале создаёт из него секреты,
   которых нет в кластере, и только потом генерирует недостающие. Без него тома бесполезны:
   пароли Postgres заданы при инициализации, данные Langfuse зашифрованы `encryption-key`.
@@ -108,8 +109,10 @@ DeepSeek берётся из `DEEPSEEK_API_KEY` и обновляется при
   пользователь `admin@llm-platform.local`), пароли Postgres, Redis, S3, ClickHouse;
 - `llm/langfuse-api`: ключи проекта `platform` для глобального колбэка LiteLLM. Туда идут
   вызовы ключей без `metadata.logging`, например master key;
-- `langfuse/clickhouse-users`: пароли пользователей общего ClickHouse, ключ = имя; новые
+- `platform/clickhouse-users`: пароли пользователей общего ClickHouse, ключ = имя; новые
   ключи дописываются, существующие не меняются;
+- `platform/clickhouse-auth`: копия пароля `clickhouse` из `langfuse/langfuse-clickhouse-auth`
+  (тот нужен чарту Langfuse), `make secret` сверяет копию с источником при каждом запуске;
 - `monitoring/grafana-admin`, `monitoring/grafana-clickhouse` (пароль `grafana_ro`),
   `monitoring/grafana-token-<p>`;
 - `llm/tenant-<name>`: ключи тенанта (virtual key, id и API-ключи проекта Langfuse), источник
