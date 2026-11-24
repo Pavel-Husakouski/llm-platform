@@ -94,8 +94,9 @@ spec:
             storage: 10Gi
 ---
 # pgvector в template1: каждая новая БД тенанта получает расширение при CREATE DATABASE.
-# Идемпотентен, существующее не трогает. В psql нужен -h postgres: локального сервера в поде
-# Job нет.
+# Заодно закрывает служебную БД postgres от тенантов: у PUBLIC туда CONNECT по умолчанию.
+# Идемпотентен, существующее не трогает, запускается при каждой синхронизации. В psql нужен
+# -h postgres: локального сервера в поде Job нет.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -123,6 +124,8 @@ spec:
             - template1
             - -c
             - CREATE EXTENSION IF NOT EXISTS vector
+            - -c
+            - REVOKE CONNECT ON DATABASE postgres FROM PUBLIC
           env:
             - name: PGPASSWORD
               valueFrom:

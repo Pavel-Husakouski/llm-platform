@@ -103,8 +103,9 @@ Postgres — один на платформу, в namespace `platform` (`deploy/
 
 Роль и БД тенанта создаёт `make tenant` идемпотентно (роль сверяется с паролем из секрета,
 БД не пересоздаётся), удаляет `make tenant-delete` (`DROP DATABASE ... WITH (FORCE)`,
-`DROP ROLE`). Изоляция тенантов: `REVOKE CONNECT ... FROM PUBLIC` на каждую БД,
-`CONNECTION LIMIT 20`, `statement_timeout` 60 с и `idle_in_transaction_session_timeout` 5 мин
+`DROP ROLE`). Изоляция тенантов: `REVOKE CONNECT ... FROM PUBLIC` на каждую БД (у служебной
+`postgres` его отзывает Job `postgres-init`), `CONNECTION LIMIT 20`, `statement_timeout` 60 с и
+`idle_in_transaction_session_timeout` 5 мин
 на роль; тенант может поднять таймауты сессионным `SET`. Квот CPU/памяти на базу у vanilla
 Postgres нет: тяжёлому тенанту — отдельный CNPG-кластер в его namespace, платформу менять не
 нужно. LiteLLM-овский `litellm-postgres` — отдельный, с общим не смешивается.
