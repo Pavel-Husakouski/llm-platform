@@ -116,9 +116,9 @@ SQL
     printf 'CREATE DATABASE %s OWNER %s;\nREVOKE CONNECT ON DATABASE %s FROM PUBLIC;\n' \
       "$name" "$name" "$name" > "$tmp/pg-db.sql"
     pg_sql < "$tmp/pg-db.sql" >/dev/null || die "Postgres: БД $name не создана"
-    echo "БД Postgres $name (OWNER $name, vector из template1)"
+    echo "БД Postgres $name (OWNER $name, vector из template1)" >&2
   else
-    echo "БД Postgres $name уже есть, роль сверена с паролем из секрета"
+    echo "БД Postgres $name уже есть, роль сверена с паролем из секрета" >&2
   fi
   echo "$pw"
 }
