@@ -15,12 +15,14 @@ spec:
       targetPort: redis
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: litellm-redis
   labels:
     app.kubernetes.io/name: litellm-redis
 spec:
+  # serviceName любой, не headless: под один, доступ через Service litellm-redis (как у postgres/embeddings).
+  serviceName: litellm-redis
   replicas: 1
   selector:
     matchLabels:

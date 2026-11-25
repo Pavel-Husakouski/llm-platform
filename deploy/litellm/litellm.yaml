@@ -94,12 +94,14 @@ spec:
       nodePort: 30400
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: litellm
   labels:
     app.kubernetes.io/name: litellm
 spec:
+  # serviceName любой, не headless: под один, доступ через Service litellm (как у postgres/embeddings).
+  serviceName: litellm
   replicas: 1
   selector:
     matchLabels:
@@ -110,7 +112,7 @@ spec:
         app.kubernetes.io/name: litellm
       annotations:
         # subPath не обновляется на лету: после правки config.yaml поднять revision, чтобы
-        # Deployment перезапустил под.
+        # StatefulSet перезапустил под.
         config/revision: "5"
     spec:
       # Без БД LiteLLM падает на миграциях и уходит в CrashLoopBackOff: ждём Postgres заранее.
