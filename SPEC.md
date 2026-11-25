@@ -199,3 +199,15 @@ Langfuse прогнать `make tenant` на тестовом тенанте.
 После шагов 1–3 их поле (`LLM_API_KEY`, `LANGFUSE_PROJECT_ID`, `POSTGRES_PASSWORD`) удаляется
 из `llm/tenant-<name>`, поэтому повторный запуск после сбоя продолжает с невыполненного шага.
 Application тенанта в Argo CD скрипт не трогает.
+
+## Остановка и возобновление проекта
+
+Проект = namespace: имя проекта совпадает с именем namespace и именем его root-Application в
+Argo CD (например, `agent-deploy-lab`). `make stop tenant=<name>` выключает auto-sync у всех
+записей проекта — root и листья, match по `destination.namespace == name` или
+`metadata.name == name` — и гасит ворклоады (Rollout/Deployment/StatefulSet) в namespace в 0.
+`make start tenant=<name>` возвращает auto-sync, и Argo CD поднимает реплики из git.
+
+PVC и данные тенанта (общие Postgres/ClickHouse) не трогаются: scale ≠ delete, при возобновлении
+проект продолжает как работал. Механизм годится и для ресурсов платформы (`tenant=langfuse`),
+но там нужно паузить ещё root `llm-platform`, поэтому штатно им пользуются только для проектов.

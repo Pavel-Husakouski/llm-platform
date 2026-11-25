@@ -73,7 +73,7 @@ endif
 KUBECTL := kubectl --context $(CONTEXT)
 HELM    := helm --kube-context $(CONTEXT)
 
-.PHONY: up down cluster secret argocd root wait status tenant tenant-key tenant-delete llm-budget tools \
+.PHONY: up down cluster secret argocd root wait status stop start tenant tenant-key tenant-delete llm-budget tools \
   argocd-password langfuse-password litellm-password clickhouse-password postgres-password grafana-password \
   grafana-token k3s-install k3s-storage k3s-uninstall kubeconfig
 
@@ -189,6 +189,17 @@ status:
 	@echo "ClickHouse: $(CLICKHOUSE_URL)/play, native $(CLICKHOUSE_TCP) (clickhouse, make clickhouse-password)"
 	@echo "Postgres:   postgres.platform:5432, NodePort $(POSTGRES_TCP) (БД тенантов, make postgres-password)"
 	@echo "Тенанты:    $(TENANT_PORTS)"
+
+# Остановить проект (tenant=<name>): выключает auto-sync его записей в Argo CD и гасит поды в
+# namespace в 0. PVC и данные тенанта (общие Postgres/ClickHouse) не трогаются.
+stop:
+	@test -n "$(tenant)" || { echo "укажите tenant=<имя проекта>" >&2; exit 1; }
+	@KUBECTL="$(KUBECTL)" scripts/project-ctl.sh stop '$(tenant)'
+
+# Возобновить остановленный проект: возвращает auto-sync, Argo CD поднимает реплики из git.
+start:
+	@test -n "$(tenant)" || { echo "укажите tenant=<имя проекта>" >&2; exit 1; }
+	@KUBECTL="$(KUBECTL)" scripts/project-ctl.sh start '$(tenant)'
 
 # Virtual key, проект Langfuse и Secret platform-llm в namespace тенанта. Идемпотентна:
 # повторный запуск не пересоздаёт ключи, только копирует platform-llm.
