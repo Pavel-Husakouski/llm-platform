@@ -18,6 +18,8 @@ spec:
       valuesObject:
         targetRevision: main
         langfuseURL: http://localhost:13300
+        keycloakUrl: http://localhost:14040
+        grafanaUrl: http://localhost:13030
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

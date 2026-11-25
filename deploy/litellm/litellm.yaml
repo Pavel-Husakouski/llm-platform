@@ -136,6 +136,10 @@ spec:
           ports:
             - name: http
               containerPort: 4000
+          # SSO UI (Keycloak): GENERIC_* и PROXY_BASE_URL создаёт make secret (llm/litellm-sso).
+          envFrom:
+            - secretRef:
+                name: litellm-sso
           env:
             - name: DEEPSEEK_API_KEY
               valueFrom:

@@ -60,14 +60,14 @@ field() {
 
 # Бэкап секретов платформы на хосте k3s: SECRETS_SSH (ssh-адрес), SECRETS_DIR (каталог, его
 # создают make k3s-install и k3s-storage). Без SECRETS_SSH (kind) — ничего не делают.
-# Секреты платформы — Opaque в llm, langfuse, monitoring и platform, кроме созданных чартами
-# (с меткой app.kubernetes.io/instance): их Argo CD создаст сам.
+# Секреты платформы — Opaque в llm, langfuse, monitoring, platform и keycloak, кроме созданных
+# чартами (с меткой app.kubernetes.io/instance): их Argo CD создаст сам.
 SECRETS_FILE=${SECRETS_DIR:-/srv/llm-platform/secrets}/secrets.json
 
 backup_secrets() {
   [ -n "${SECRETS_SSH:-}" ] || return 0
   local ns
-  for ns in llm langfuse monitoring platform; do $KUBECTL -n "$ns" get secret -o json; done \
+  for ns in llm langfuse monitoring platform keycloak; do $KUBECTL -n "$ns" get secret -o json; done \
     | jq -s '[.[].items[]
         | select(.type == "Opaque" and .metadata.labels["app.kubernetes.io/instance"] == null)
         | {apiVersion: "v1", kind: "Secret", type, data,
@@ -101,6 +101,7 @@ restore_secrets() {
 # LITELLM_URL и LANGFUSE_URL (задаёт make по TARGET).
 LITELLM_URL=${LITELLM_URL:-http://localhost:14000}
 LANGFUSE_URL=${LANGFUSE_URL:-http://localhost:13300}
+KEYCLOAK_URL=${KEYCLOAK_URL:-http://localhost:14040}
 
 # litellm <path> <body-file>: POST с master key, ответ в stdout.
 litellm() {

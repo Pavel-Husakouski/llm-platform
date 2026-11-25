@@ -6,6 +6,11 @@ targetRevision: main
 # подставляет адрес для TARGET: http://<HOST>:30300 в k3s, http://localhost:13300 в kind.
 langfuseURL: http://localhost:13300
 
+# Адреса SSO снаружи: issuer Keycloak (OIDC) и root_url Grafana. В kind — localhost, в k3s их
+# подставляет make root по TARGET (как langfuseURL).
+keycloakUrl: http://localhost:14040
+grafanaUrl: http://localhost:13030
+
 # Версии сторонних charts фиксированы: обновление — отдельный коммит. Langfuse обновлять
 # осторожно: make tenant ходит во внутренний tRPC UI (см. SPEC.md).
 charts:

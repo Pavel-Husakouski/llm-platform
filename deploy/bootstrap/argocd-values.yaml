@@ -11,6 +11,15 @@ configs:
     # Без TLS: стенд в домашней сети (k3s на хосте в LAN или kind на 127.0.0.1)
     server.insecure: true
   cm:
+    # Адрес Argo CD снаружи (redirect OIDC) и SSO через Keycloak. Значения плейсхолдеров ниже
+    # (url, issuer) подставляет make argocd по TARGET.
+    url: ARGOCD_URL
+    oidc.config: |
+      name: Keycloak
+      issuer: KEYCLOAK_URL/realms/platform
+      clientID: argocd
+      clientSecret: $oidc.Keycloak.clientSecret
+      requestedScopes: ["openid", "profile", "email", "groups"]
     # Health для Application: без него sync waves в app-of-apps не ждут готовности дочерних
     # приложений, и Rollout тенанта синхронизируется раньше, чем появятся CRD Argo Rollouts.
     resource.customizations.health.argoproj.io_Application: |
@@ -26,6 +35,15 @@ configs:
         end
       end
       return hs
+
+  rbac:
+    # admins/viewers — группы Keycloak (claim groups из id_token), admin — встроенный локальный
+    # админ Argo CD (остаётся как fallback, когда Keycloak недоступен).
+    policy.csv: |
+      g, admin, role:admin
+      g, admins, role:admin
+      g, viewers, role:readonly
+    scopes: '[groups]'
 
 server:
   service:

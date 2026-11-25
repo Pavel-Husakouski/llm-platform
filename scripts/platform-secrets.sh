@@ -10,7 +10,7 @@ source "$(dirname "$0")/lib.sh"
 # После переустановки k3s: секреты из бэкапа на хосте, данные в томах зашифрованы и закрыты ими.
 restore_secrets
 
-for ns in llm langfuse monitoring platform; do namespace "$ns"; done
+for ns in llm langfuse monitoring platform keycloak; do namespace "$ns"; done
 
 if [ -n "${DEEPSEEK_API_KEY:-}" ]; then
   apply llm deepseek "DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY"
@@ -67,6 +67,38 @@ apply monitoring grafana-clickhouse \
 once llm litellm \
   "LITELLM_MASTER_KEY=sk-master-$(rand 16)" \
   "POSTGRES_PASSWORD=$(rand 20)"
+
+# Keycloak (SSO): bootstrap admin master-realm, пароль его Postgres и client secret'ы OIDC.
+# Client secret'ы генерим заранее и кладём в keycloak/oidc: make keycloak ставит их на клиенты,
+# а потребители (Argo CD, Grafana, LiteLLM) читают те же значения — после переустановки k3s
+# секреты те же, SSO не перевыпускается.
+once keycloak keycloak \
+  KEYCLOAK_ADMIN_USERNAME=admin \
+  "KEYCLOAK_ADMIN_PASSWORD=$(rand 20)" \
+  POSTGRES_USER=keycloak \
+  "POSTGRES_PASSWORD=$(rand 20)" \
+  POSTGRES_DB=keycloak
+once keycloak oidc \
+  "ARGOCD_CLIENT_SECRET=$(rand 20)" \
+  "GRAFANA_CLIENT_SECRET=$(rand 20)" \
+  "LITELLM_CLIENT_SECRET=$(rand 20)" \
+  "PAUEL_PASSWORD=$(rand 20)"
+
+# Потребители SSO (apply, не once): значения из keycloak/oidc и адресов SSO, сверяются при
+# каждом запуске. Grafana читает client secret через envFrom, LiteLLM — GENERIC_* и PROXY_BASE_URL.
+apply monitoring grafana-keycloak \
+  "GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET=$(get keycloak oidc GRAFANA_CLIENT_SECRET)"
+apply llm litellm-sso \
+  GENERIC_CLIENT_ID=litellm \
+  "GENERIC_CLIENT_SECRET=$(get keycloak oidc LITELLM_CLIENT_SECRET)" \
+  "GENERIC_AUTHORIZATION_ENDPOINT=${KEYCLOAK_URL}/realms/platform/protocol/openid-connect/auth" \
+  "GENERIC_TOKEN_ENDPOINT=${KEYCLOAK_URL}/realms/platform/protocol/openid-connect/token" \
+  "GENERIC_USERINFO_ENDPOINT=${KEYCLOAK_URL}/realms/platform/protocol/openid-connect/userinfo" \
+  "GENERIC_SCOPE=openid email profile" \
+  GENERIC_USER_EMAIL_ATTRIBUTE=email \
+  GENERIC_USER_DISPLAY_NAME_ATTRIBUTE=name \
+  "PROXY_BASE_URL=${LITELLM_URL}" \
+  PROXY_ADMIN_ID=pauel@llm-platform.local
 
 # Копия API-ключей проекта platform для глобального колбэка LiteLLM: туда идут вызовы
 # ключей без metadata.logging, например master key.

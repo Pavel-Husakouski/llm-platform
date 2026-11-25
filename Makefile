@@ -1,7 +1,7 @@
 # Платформа в k3s на выделенном хосте (TARGET=k3s, по умолчанию) или в локальном kind
 # (TARGET=kind): make up поднимает Argo CD, остальное Argo CD синхронизирует из git. Тенанты подключаются через make tenant и кладут свои Application в тот же Argo CD.
 # Ключ DeepSeek берётся только из переменной окружения DEEPSEEK_API_KEY, .env не читается.
-# Остальные секреты (LiteLLM, Langfuse) make secret генерирует сам, один раз.
+# Остальные секреты (LiteLLM, Langfuse, Keycloak) make secret генерирует сам, один раз.
 
 # Где кластер: k3s на хосте HOST (ставит make k3s-install) или kind в локальном docker.
 TARGET         ?= k3s
@@ -27,7 +27,7 @@ TOOLS_DIR      ?= $(HOME)/.local/bin
 REVISION       ?= main
 WAIT_TIMEOUT   ?= 900
 # Application платформы: make wait не ждёт Application тенантов.
-APPS           := llm-platform storage argo-rollouts prometheus clickhouse postgres langfuse litellm embeddings grafana
+APPS           := llm-platform storage argo-rollouts prometheus clickhouse postgres langfuse litellm embeddings grafana keycloak
 
 # make tenant NAME=agent NS=agent BUDGET=1 MODELS=deepseek-flash
 NS             ?= $(NAME)
@@ -42,6 +42,7 @@ URL            := http://$(HOST)
 ARGOCD_URL     := $(URL):30080
 PROMETHEUS_URL := $(URL):30090
 GRAFANA_URL    := $(URL):30030
+KEYCLOAK_URL   := $(URL):30040
 LANGFUSE_URL   := $(URL):30300
 LITELLM_URL    := $(URL):30400
 EMBEDDINGS_URL := $(URL):30180
@@ -57,6 +58,7 @@ URL            := http://localhost
 ARGOCD_URL     := $(URL):18080
 PROMETHEUS_URL := $(URL):19090
 GRAFANA_URL    := $(URL):13030
+KEYCLOAK_URL   := $(URL):14040
 LANGFUSE_URL   := $(URL):13300
 LITELLM_URL    := $(URL):14000
 EMBEDDINGS_URL := $(URL):18180
@@ -73,11 +75,11 @@ endif
 KUBECTL := kubectl --context $(CONTEXT)
 HELM    := helm --kube-context $(CONTEXT)
 
-.PHONY: up down cluster secret argocd root wait status stop start tenant tenant-key tenant-delete llm-budget tools \
-  argocd-password langfuse-password litellm-password clickhouse-password postgres-password grafana-password \
+.PHONY: up down cluster secret argocd root wait status stop start tenant tenant-key tenant-delete llm-budget tools keycloak \
+  argocd-password langfuse-password litellm-password clickhouse-password postgres-password grafana-password keycloak-password keycloak-admin-password \
   grafana-token k3s-install k3s-storage k3s-uninstall kubeconfig
 
-up: cluster secret argocd root wait status
+up: cluster secret argocd root wait keycloak status
 
 ifeq ($(TARGET),kind)
 down:
@@ -145,17 +147,21 @@ kubeconfig:
 	echo "context $(CLUSTER) → https://$(HOST):6443"
 
 secret:
-	@KUBECTL="$(KUBECTL)" $(SECRETS_BACKUP) scripts/platform-secrets.sh
+	@KUBECTL="$(KUBECTL)" $(SECRETS_BACKUP) KEYCLOAK_URL=$(KEYCLOAK_URL) LITELLM_URL=$(LITELLM_URL) scripts/platform-secrets.sh
 
+# Argo CD с OIDC → Keycloak: issuer и url подставляет sed по TARGET, client secret кладёт
+# make keycloak в argocd-secret (после установки).
 argocd:
-	$(HELM) upgrade --install argocd argo-cd --repo $(ARGOCD_REPO) --version $(ARGOCD_CHART) \
-	  --namespace argocd --create-namespace \
-	  --values deploy/bootstrap/argocd-values.yaml --wait --timeout 10m
+	sed -e 's#ARGOCD_URL#$(ARGOCD_URL)#g' -e 's#KEYCLOAK_URL#$(KEYCLOAK_URL)#g' deploy/bootstrap/argocd-values.yaml \
+	  | $(HELM) upgrade --install argocd argo-cd --repo $(ARGOCD_REPO) --version $(ARGOCD_CHART) \
+	    --namespace argocd --create-namespace --values - --wait --timeout 10m
 
-# Подставляет ветку и адрес Langfuse, по которому браузер открывает UI (NEXTAUTH_URL).
+# Подставляет ветку, адрес Langfuse (NEXTAUTH_URL) и адреса SSO (Keycloak, Grafana) для TARGET.
 root:
 	sed -e 's#targetRevision: main#targetRevision: $(REVISION)#' \
-	  -e 's#langfuseURL: .*#langfuseURL: $(LANGFUSE_URL)#' deploy/bootstrap/root-app.yaml \
+	  -e 's#langfuseURL: .*#langfuseURL: $(LANGFUSE_URL)#' \
+	  -e 's#keycloakUrl: .*#keycloakUrl: $(KEYCLOAK_URL)#' \
+	  -e 's#grafanaUrl: .*#grafanaUrl: $(GRAFANA_URL)#' deploy/bootstrap/root-app.yaml \
 	  | $(KUBECTL) apply -f -
 
 # Ждём, пока все Application платформы станут Synced и Healthy.
@@ -180,12 +186,14 @@ status:
 	@$(KUBECTL) get pods -n langfuse
 	@$(KUBECTL) get pods -n monitoring
 	@$(KUBECTL) get pods -n platform
-	@echo "Argo CD UI: $(ARGOCD_URL) (admin, пароль: make argocd-password)"
+	@$(KUBECTL) get pods -n keycloak
+	@echo "Keycloak:   $(KEYCLOAK_URL) (SSO: pauel, make keycloak-password)"
+	@echo "Argo CD UI: $(ARGOCD_URL) (SSO Keycloak, fallback admin: make argocd-password)"
 	@echo "Prometheus: $(PROMETHEUS_URL)"
 	@echo "Langfuse:   $(LANGFUSE_URL) (admin@llm-platform.local, make langfuse-password)"
-	@echo "LiteLLM:    $(LITELLM_URL)/ui (admin, make litellm-password)"
+	@echo "LiteLLM:    $(LITELLM_URL)/ui (SSO Keycloak, master key: make litellm-password)"
 	@echo "Embeddings: $(EMBEDDINGS_URL)/health (alias embed в LiteLLM)"
-	@echo "Grafana:    $(GRAFANA_URL) (admin, make grafana-password)"
+	@echo "Grafana:    $(GRAFANA_URL) (SSO Keycloak, fallback admin: make grafana-password)"
 	@echo "ClickHouse: $(CLICKHOUSE_URL)/play, native $(CLICKHOUSE_TCP) (clickhouse, make clickhouse-password)"
 	@echo "Postgres:   postgres.platform:5432, NodePort $(POSTGRES_TCP) (БД тенантов, make postgres-password)"
 	@echo "Тенанты:    $(TENANT_PORTS)"
@@ -200,6 +208,12 @@ stop:
 start:
 	@test -n "$(tenant)" || { echo "укажите tenant=<имя проекта>" >&2; exit 1; }
 	@KUBECTL="$(KUBECTL)" scripts/project-ctl.sh start '$(tenant)'
+
+# Bootstrap SSO: realm, клиенты argocd/grafana/litellm, группы и пользователь pauel в Keycloak.
+# Идемпотентно; client secret Argo CD кладёт в argocd-secret. Запускается make up после wait.
+keycloak:
+	@KUBECTL="$(KUBECTL)" KEYCLOAK_URL=$(KEYCLOAK_URL) ARGOCD_URL=$(ARGOCD_URL) \
+	  GRAFANA_URL=$(GRAFANA_URL) LITELLM_URL=$(LITELLM_URL) scripts/keycloak.sh
 
 # Virtual key, проект Langfuse и Secret platform-llm в namespace тенанта. Идемпотентна:
 # повторный запуск не пересоздаёт ключи, только копирует platform-llm.
@@ -228,6 +242,13 @@ llm-budget:
 # kubectl-плагин Argo Rollouts версии контроллера: get, promote, abort, retry выкатки тенанта.
 tools:
 	@KUBECTL="$(KUBECTL)" scripts/rollouts-plugin.sh '$(ROLLOUTS_PLUGIN)' '$(TOOLS_DIR)'
+
+# Пароль SSO-пользователя pauel (вход в Keycloak) и bootstrap admin master-realm.
+keycloak-password:
+	@$(KUBECTL) -n keycloak get secret oidc -o jsonpath='{.data.PAUEL_PASSWORD}' | base64 -d; echo
+
+keycloak-admin-password:
+	@$(KUBECTL) -n keycloak get secret keycloak -o jsonpath='{.data.KEYCLOAK_ADMIN_PASSWORD}' | base64 -d; echo
 
 argocd-password:
 	@$(KUBECTL) -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' \

@@ -40,16 +40,31 @@ spec:
           limits: { memory: 4Gi }
         plugins:
           - grafana-clickhouse-datasource@{{ .Values.charts.grafanaClickhouse }}
-        # GRAFANA_RO_PASSWORD для источника ClickHouse
+        # GRAFANA_RO_PASSWORD для источника ClickHouse, GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET для SSO
         envFromSecrets:
           - name: grafana-clickhouse
+          - name: grafana-keycloak
         grafana.ini:
+          server:
+            # root_url снаружи: по нему Grafana строит redirect OIDC (login/generic_oauth).
+            root_url: {{ .Values.grafanaUrl }}
           analytics:
             reporting_enabled: false
             check_for_updates: false
             check_for_plugin_updates: false
           users:
             allow_sign_up: false
+          auth.generic_oauth:
+            enabled: true
+            name: Keycloak
+            client_id: grafana
+            client_secret: $__env{GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET}
+            scopes: openid email profile groups
+            auth_url: {{ .Values.keycloakUrl }}/realms/platform/protocol/openid-connect/auth
+            token_url: {{ .Values.keycloakUrl }}/realms/platform/protocol/openid-connect/token
+            api_url: {{ .Values.keycloakUrl }}/realms/platform/protocol/openid-connect/userinfo
+            role_attribute_path: contains(groups[*], 'admins') && 'Admin' || contains(groups[*], 'viewers') && 'Viewer' || 'Viewer'
+            role_attribute_strict: true
         # uid источников — контракт для дашбордов тенантов, не менять.
         datasources:
           datasources.yaml:

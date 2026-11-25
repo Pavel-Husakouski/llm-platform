@@ -1,0 +1,117 @@
+# Keycloak — identity provider SSO платформы. Realm, клиенты (argocd/grafana/litellm), группы и
+# юзеров заводит make keycloak (scripts/keycloak.sh) через Admin REST: секретов в git нет.
+# Состояние в Postgres (postgres.yaml), поэтому PVC не нужен. Hostname динамический
+# (hostname-strict=false): issuer берётся из Host запроса, и браузер, и поды в кластере ходят в
+# Keycloak по одному адресу <HOST>:30040.
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak
+spec:
+  # NodePort: UI и issuer на <HOST>:30040 в k3s, на localhost:14040 в kind (extraPortMappings)
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: keycloak
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      nodePort: 30040
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak
+spec:
+  serviceName: keycloak
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak
+    spec:
+      # Без БД Keycloak падает на миграциях: ждём Postgres заранее.
+      initContainers:
+        - name: wait-postgres
+          image: postgres:17-alpine
+          command:
+            - sh
+            - -c
+            - until pg_isready -h keycloak-postgres -p 5432 -U keycloak; do sleep 2; done
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.8.1
+          args: ["start"]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: KC_DB
+              value: postgres
+            - name: KC_DB_URL_HOST
+              value: keycloak-postgres
+            - name: KC_DB_URL_PORT
+              value: "5432"
+            - name: KC_DB_URL_DATABASE
+              value: keycloak
+            - name: KC_DB_USERNAME
+              value: keycloak
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak
+                  key: POSTGRES_PASSWORD
+            # Bootstrap admin master-realm, учитывается только при первом старте.
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak
+                  key: KEYCLOAK_ADMIN_USERNAME
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak
+                  key: KEYCLOAK_ADMIN_PASSWORD
+            # Платформа без TLS (как Argo CD server.insecure): включаем HTTP и не форсим https.
+            - name: KC_HTTP_ENABLED
+              value: "true"
+            - name: KC_HOSTNAME_STRICT
+              value: "false"
+            - name: KC_HOSTNAME_STRICT_HTTPS
+              value: "false"
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+          # Первый старт: миграции БД + build, до 2–3 минут.
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 1536Mi

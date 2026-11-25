@@ -31,6 +31,10 @@ nodes:
       - containerPort: 30030
         hostPort: 13030
         listenAddress: 127.0.0.1
+      # Keycloak (issuer SSO)
+      - containerPort: 30040
+        hostPort: 14040
+        listenAddress: 127.0.0.1
       # Общий ClickHouse: HTTP (play) и native-протокол
       - containerPort: 30123
         hostPort: 18123

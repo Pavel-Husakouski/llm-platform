@@ -14,10 +14,11 @@
 | `litellm`       | `llm`           | `deploy/litellm`, свой Postgres            |
 | `embeddings`    | `tei`           | `deploy/embeddings`, TEI, alias `embed`    |
 | `grafana`       | `monitoring`    | chart grafana (grafana-community)          |
+| `keycloak`      | `keycloak`      | `deploy/keycloak`, свой Postgres           |
 
 Кластер — k3s на выделенном хосте (`TARGET=k3s`, по умолчанию) или локальный kind
 (`TARGET=kind`). Манифесты одинаковы, различаются только адреса NodePort снаружи и
-`langfuseURL`, который подставляет `make root`.
+`langfuseURL`/`keycloakUrl`/`grafanaUrl`, которые подставляет `make root`.
 
 Argo CD ставит `make argocd` из helm (`deploy/bootstrap/argocd-values.yaml`), всё остальное
 синхронизируется из git. Argo Rollouts (CRD) и Prometheus (scrape подов по аннотациям
@@ -115,6 +116,42 @@ Service `postgres` — ещё и NodePort `:30432` (в kind проброшен �
 `llm/tenant-<name>`, как у ClickHouse. Внутри кластера тенант использует `platform-postgres`
 (`postgres.platform:5432`), наружный адрес в контракт не входит.
 
+## SSO (Keycloak)
+
+Вход в UI платформы через Keycloak (OIDC), realm `platform`, а не мастер-паролями. Namespace
+`keycloak`, NodePort `:30040` (в kind `localhost:14040`), свой Postgres (`deploy/keycloak`).
+Хостнейм динамический (`KC_HOSTNAME_STRICT=false`): issuer берётся из Host запроса, поэтому
+браузер и поды в кластере видят один и тот же issuer `<HOST>:30040`.
+
+Клиенты (confidential, redirect URI под каждый UI) и группы создаёт `make keycloak`
+(`scripts/keycloak.sh`) через Admin REST, идемпотентно. Client secret'ы заранее генерирует
+`make secret` (`keycloak/oidc`) — они стабильны и лежат в бэкапе на хосте, поэтому SSO не
+перевыпускается после переустановки k3s.
+
+| Клиент    | Redirect URI                       | Secret (keycloak/oidc)   | Доступ                      |
+|-----------|------------------------------------|--------------------------|-----------------------------|
+| `argocd`  | `$ARGOCD_URL/auth/callback`        | `ARGOCD_CLIENT_SECRET`   | `admins`/`viewers` по ролям |
+| `grafana` | `$GRAFANA_URL/login/generic_oauth` | `GRAFANA_CLIENT_SECRET`  | `admins`/`viewers` по ролям |
+| `litellm` | `$LITELLM_URL/sso/callback`        | `LITELLM_CLIENT_SECRET`  | вход есть у всех            |
+
+Группы: `admins` (admin) и `viewers` (read-only). Пользователь `pauel`
+(`pauel@llm-platform.local`) — в `admins`, пароль `make keycloak-password`.
+
+- Argo CD: generic OIDC в `configs.cm` (Dex выключен), маппинг `groups` → роль в
+  `configs.rbac`. `make keycloak` кладёт client secret в `argocd-secret`
+  (`oidc.Keycloak.clientSecret`) на каждом запуске — helm пересоздаёт секрет при `make argocd`.
+- Grafana: `auth.generic_oauth`, `role_attribute_path` из claim `groups` (admin/Viewer),
+  client secret через `envFrom` (`GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET`).
+- LiteLLM: SSO UI через env `GENERIC_*` и `PROXY_BASE_URL` (redirect `/sso/callback`),
+  `PROXY_ADMIN_ID=pauel@llm-platform.local`.
+
+Langfuse OSS SSO не поддерживает (функция enterprise) — остаётся локальный `admin`.
+Prometheus, ClickHouse и Postgres — backend'ы, не OIDC-цели.
+
+В kind SSO не работает: `keycloakUrl`/issuer — `http://localhost:14040`, а подам внутри
+кластера `localhost` недоступен (это их собственный loopback). Ограничение только локальной
+разработки; в k3s используется LAN-адрес хоста, достижимый и из подов.
+
 ## Данные и переустановка k3s
 
 `/srv/llm-platform` на хосте вне каталогов k3s, `k3s-uninstall` его не трогает:
@@ -124,7 +161,7 @@ Service `postgres` — ещё и NodePort `:30432` (в kind проброшен �
   local-path, `pathPattern: <ns>/<pvc>/` и `Retain`. PVC с тем же именем после переустановки
   получает тот же каталог с данными.
 - `secrets/secrets.json` — бэкап секретов платформы: Opaque в `llm`, `langfuse`, `monitoring`,
-  `platform` без метки `app.kubernetes.io/instance` (те создают чарты). Пишется по ssh в конце `make secret`,
+  `platform` и `keycloak` без метки `app.kubernetes.io/instance` (те создают чарты). Пишется по ssh в конце `make secret`,
   `tenant`, `tenant-delete`, `grafana-token`; `make secret` в начале создаёт из него секреты,
   которых нет в кластере, и только потом генерирует недостающие. Без него тома бесполезны:
   пароли Postgres заданы при инициализации, данные Langfuse зашифрованы `encryption-key`.
@@ -152,6 +189,14 @@ DeepSeek берётся из `DEEPSEEK_API_KEY` и обновляется при
   `llm/tenant-<name>`;
 - `monitoring/grafana-admin`, `monitoring/grafana-clickhouse` (пароль `grafana_ro`),
   `monitoring/grafana-token-<p>`;
+- `keycloak/keycloak`: bootstrap admin master-realm (`admin`) и пароль его Postgres;
+- `keycloak/oidc`: client secret'ы OIDC (`ARGOCD_CLIENT_SECRET`, `GRAFANA_CLIENT_SECRET`,
+  `LITELLM_CLIENT_SECRET`) и пароль SSO-пользователя `PAUEL_PASSWORD` — источник для клиентов
+  и потребителей;
+- `monitoring/grafana-keycloak`: `GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET` (из `keycloak/oidc`),
+  читает Grafana через `envFrom`;
+- `llm/litellm-sso`: `GENERIC_*`, `PROXY_BASE_URL`, `PROXY_ADMIN_ID` для SSO UI LiteLLM
+  (из `keycloak/oidc` и адресов SSO);
 - `llm/tenant-<name>`: ключи тенанта (virtual key, id и API-ключи проекта Langfuse, пароль
   роли Postgres), источник для `platform-llm` и `platform-postgres`.
 
