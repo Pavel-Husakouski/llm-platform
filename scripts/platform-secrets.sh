@@ -70,7 +70,7 @@ once llm litellm \
 
 # Keycloak (SSO): bootstrap admin master-realm, пароль его Postgres и client secret'ы OIDC.
 # Client secret'ы генерим заранее и кладём в keycloak/oidc: make keycloak ставит их на клиенты,
-# а потребители (Argo CD, Grafana, LiteLLM) читают те же значения — после переустановки k3s
+# а потребители (Argo CD, Grafana, LiteLLM, Langfuse) читают те же значения — после переустановки k3s
 # секреты те же, SSO не перевыпускается.
 once keycloak keycloak \
   KEYCLOAK_ADMIN_USERNAME=admin \
@@ -78,11 +78,10 @@ once keycloak keycloak \
   POSTGRES_USER=keycloak \
   "POSTGRES_PASSWORD=$(rand 20)" \
   POSTGRES_DB=keycloak
-once keycloak oidc \
-  "ARGOCD_CLIENT_SECRET=$(rand 20)" \
-  "GRAFANA_CLIENT_SECRET=$(rand 20)" \
-  "LITELLM_CLIENT_SECRET=$(rand 20)" \
-  "PAUEL_PASSWORD=$(rand 20)"
+# passwords, а не once: новый client secret добавляется к существующим, их значения не меняются.
+passwords keycloak oidc \
+  ARGOCD_CLIENT_SECRET GRAFANA_CLIENT_SECRET LITELLM_CLIENT_SECRET \
+  LANGFUSE_CLIENT_SECRET PAUEL_PASSWORD
 
 # Потребители SSO (apply, не once): значения из keycloak/oidc и адресов SSO, сверяются при
 # каждом запуске. Grafana читает client secret через envFrom, LiteLLM — GENERIC_* и PROXY_BASE_URL.
@@ -99,6 +98,10 @@ apply llm litellm-sso \
   GENERIC_USER_DISPLAY_NAME_ATTRIBUTE=name \
   "PROXY_BASE_URL=${LITELLM_URL}" \
   PROXY_ADMIN_ID=pauel@llm-platform.io
+
+# Langfuse SSO: OIDC-клиент Keycloak (AUTH_KEYCLOAK_*). issuer из KEYCLOAK_URL.
+apply langfuse langfuse-sso \
+  "LANGFUSE_CLIENT_SECRET=$(get keycloak oidc LANGFUSE_CLIENT_SECRET)"
 
 # Копия API-ключей проекта platform для глобального колбэка LiteLLM: туда идут вызовы
 # ключей без metadata.logging, например master key.

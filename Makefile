@@ -209,11 +209,11 @@ start:
 	@test -n "$(tenant)" || { echo "укажите tenant=<имя проекта>" >&2; exit 1; }
 	@KUBECTL="$(KUBECTL)" scripts/project-ctl.sh start '$(tenant)'
 
-# Bootstrap SSO: realm, клиенты argocd/grafana/litellm, группы и пользователь pauel в Keycloak.
+# Bootstrap SSO: realm, клиенты argocd/grafana/litellm/langfuse, группы и пользователь pauel в Keycloak.
 # Идемпотентно; client secret Argo CD кладёт в argocd-secret. Запускается make up после wait.
 keycloak:
 	@KUBECTL="$(KUBECTL)" KEYCLOAK_URL=$(KEYCLOAK_URL) ARGOCD_URL=$(ARGOCD_URL) \
-	  GRAFANA_URL=$(GRAFANA_URL) LITELLM_URL=$(LITELLM_URL) scripts/keycloak.sh
+	  GRAFANA_URL=$(GRAFANA_URL) LITELLM_URL=$(LITELLM_URL) LANGFUSE_URL=$(LANGFUSE_URL) scripts/keycloak.sh
 
 # Virtual key, проект Langfuse и Secret platform-llm в namespace тенанта. Идемпотентна:
 # повторный запуск не пересоздаёт ключи, только копирует platform-llm.

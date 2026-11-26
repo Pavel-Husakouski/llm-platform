@@ -14,6 +14,7 @@ KEYCLOAK_URL=${KEYCLOAK_URL:-http://localhost:14040}
 ARGOCD_URL=${ARGOCD_URL:-http://localhost:18080}
 GRAFANA_URL=${GRAFANA_URL:-http://localhost:13030}
 LITELLM_URL=${LITELLM_URL:-http://localhost:14000}
+LANGFUSE_URL=${LANGFUSE_URL:-http://localhost:13300}
 REALM=platform
 ADMIN_USER=pauel
 ADMIN_EMAIL=pauel@llm-platform.io
@@ -65,6 +66,7 @@ clients=(
   "argocd|$ARGOCD_URL/auth/callback"
   "grafana|$GRAFANA_URL/login/generic_oauth"
   "litellm|$LITELLM_URL/sso/callback"
+  "langfuse|$LANGFUSE_URL/api/auth/callback/keycloak"
 )
 for c in "${clients[@]}"; do
   cid=${c%%|*}
@@ -73,6 +75,7 @@ for c in "${clients[@]}"; do
     argocd) secret=$(get keycloak oidc ARGOCD_CLIENT_SECRET) ;;
     grafana) secret=$(get keycloak oidc GRAFANA_CLIENT_SECRET) ;;
     litellm) secret=$(get keycloak oidc LITELLM_CLIENT_SECRET) ;;
+    langfuse) secret=$(get keycloak oidc LANGFUSE_CLIENT_SECRET) ;;
   esac
   jq -n --arg id "$cid" --arg redirect "$redirect" --arg secret "$secret" \
     '{clientId: $id, enabled: true, protocol: "openid-connect", publicClient: false,

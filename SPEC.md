@@ -133,6 +133,7 @@ Service `postgres` — ещё и NodePort `:30432` (в kind проброшен �
 | `argocd`  | `$ARGOCD_URL/auth/callback`        | `ARGOCD_CLIENT_SECRET`   | `admins`/`viewers` по ролям |
 | `grafana` | `$GRAFANA_URL/login/generic_oauth` | `GRAFANA_CLIENT_SECRET`  | `admins`/`viewers` по ролям |
 | `litellm` | `$LITELLM_URL/sso/callback`        | `LITELLM_CLIENT_SECRET`  | вход есть у всех            |
+| `langfuse`| `$LANGFUSE_URL/api/auth/callback/keycloak` | `LANGFUSE_CLIENT_SECRET` | вход по email (роли — внутри Langfuse) |
 
 Группы: `admins` (admin) и `viewers` (read-only). Пользователь `pauel`
 (`pauel@llm-platform.io`) — в `admins`, пароль `make keycloak-password`.
@@ -143,9 +144,12 @@ Service `postgres` — ещё и NodePort `:30432` (в kind проброшен �
 - Grafana: `auth.generic_oauth`, `role_attribute_path` из claim `groups` (admin/Viewer),
   client secret через `envFrom` (`GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET`).
 - LiteLLM: SSO UI через env `GENERIC_*` и `PROXY_BASE_URL` (redirect `/sso/callback`),
-  `PROXY_ADMIN_ID=pauel@llm-platform.local`.
+  `PROXY_ADMIN_ID=pauel@llm-platform.io`.
+- Langfuse: SSO через `AUTH_KEYCLOAK_*` (блок `auth.providers.keycloak` чарта), redirect
+  `/api/auth/callback/keycloak`. Локальный `admin` остаётся: `make tenant` ходит в Langfuse по
+  паролю (credentials), отключать username/password нельзя. Роли `admins`/`viewers` из Keycloak
+  не маппятся — доступ внутри Langfuse даётся на уровне org/проекта, по email.
 
-Langfuse OSS SSO не поддерживает (функция enterprise) — остаётся локальный `admin`.
 Prometheus, ClickHouse и Postgres — backend'ы, не OIDC-цели.
 
 В kind SSO не работает: `keycloakUrl`/issuer — `http://localhost:14040`, а подам внутри
@@ -191,12 +195,14 @@ DeepSeek берётся из `DEEPSEEK_API_KEY` и обновляется при
   `monitoring/grafana-token-<p>`;
 - `keycloak/keycloak`: bootstrap admin master-realm (`admin`) и пароль его Postgres;
 - `keycloak/oidc`: client secret'ы OIDC (`ARGOCD_CLIENT_SECRET`, `GRAFANA_CLIENT_SECRET`,
-  `LITELLM_CLIENT_SECRET`) и пароль SSO-пользователя `PAUEL_PASSWORD` — источник для клиентов
-  и потребителей;
+  `LITELLM_CLIENT_SECRET`, `LANGFUSE_CLIENT_SECRET`) и пароль SSO-пользователя `PAUEL_PASSWORD` —
+  источник для клиентов и потребителей;
 - `monitoring/grafana-keycloak`: `GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET` (из `keycloak/oidc`),
   читает Grafana через `envFrom`;
 - `llm/litellm-sso`: `GENERIC_*`, `PROXY_BASE_URL`, `PROXY_ADMIN_ID` для SSO UI LiteLLM
   (из `keycloak/oidc` и адресов SSO);
+- `langfuse/langfuse-sso`: `LANGFUSE_CLIENT_SECRET` (из `keycloak/oidc`) для SSO Langfuse,
+  читает `langfuse-web` через `secretKeyRef` чарта;
 - `llm/tenant-<name>`: ключи тенанта (virtual key, id и API-ключи проекта Langfuse, пароль
   роли Postgres), источник для `platform-llm` и `platform-postgres`.
 

@@ -28,6 +28,16 @@ spec:
             url: {{ .Values.langfuseURL }}
             secret:
               secretKeyRef: { name: langfuse-keys, key: nextauth-secret }
+          # SSO через Keycloak (OIDC): AUTH_KEYCLOAK_*. Локальный admin остаётся fallback'ом,
+          # иначе make tenant не сможет входить по паролю (credentials). issuer — тот же
+          # NodePort-адрес Keycloak, что и у остальных клиентов.
+          auth:
+            providers:
+              keycloak:
+                clientId: langfuse
+                clientSecret:
+                  secretKeyRef: { name: langfuse-sso, key: LANGFUSE_CLIENT_SECRET }
+                issuer: {{ .Values.keycloakUrl }}/realms/platform
           features:
             telemetryEnabled: false
             signUpDisabled: true
