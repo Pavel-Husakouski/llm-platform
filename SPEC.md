@@ -135,7 +135,7 @@ Service `postgres` — ещё и NodePort `:30432` (в kind проброшен �
 | `litellm` | `$LITELLM_URL/sso/callback`        | `LITELLM_CLIENT_SECRET`  | вход есть у всех            |
 
 Группы: `admins` (admin) и `viewers` (read-only). Пользователь `pauel`
-(`pauel@llm-platform.local`) — в `admins`, пароль `make keycloak-password`.
+(`pauel@llm-platform.io`) — в `admins`, пароль `make keycloak-password`.
 
 - Argo CD: generic OIDC в `configs.cm` (Dex выключен), маппинг `groups` → роль в
   `configs.rbac`. `make keycloak` кладёт client secret в `argocd-secret`

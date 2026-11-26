@@ -16,7 +16,7 @@ GRAFANA_URL=${GRAFANA_URL:-http://localhost:13030}
 LITELLM_URL=${LITELLM_URL:-http://localhost:14000}
 REALM=platform
 ADMIN_USER=pauel
-ADMIN_EMAIL=pauel@llm-platform.local
+ADMIN_EMAIL=pauel@llm-platform.io
 
 admin_user=$(get keycloak keycloak KEYCLOAK_ADMIN_USERNAME)
 admin_pass=$(get keycloak keycloak KEYCLOAK_ADMIN_PASSWORD)
@@ -125,15 +125,16 @@ ensure_group viewers
 # --- пользователь pauel -------------------------------------------------
 kc GET "/admin/realms/$REALM/users?username=$ADMIN_USER&exact=true" > "$tmp/users.json"
 uid=$(jq -r '.[0].id // empty' "$tmp/users.json")
+jq -n --arg u "$ADMIN_USER" --arg e "$ADMIN_EMAIL" \
+  '{username: $u, email: $e, emailVerified: true, enabled: true, firstName: "Pauel"}' \
+  > "$tmp/user.json"
 if [ -z "$uid" ]; then
-  jq -n --arg u "$ADMIN_USER" --arg e "$ADMIN_EMAIL" \
-    '{username: $u, email: $e, emailVerified: true, enabled: true, firstName: "Pauel"}' \
-    > "$tmp/user.json"
   kc POST "/admin/realms/$REALM/users" "$tmp/user.json" >/dev/null
   uid=$(kc GET "/admin/realms/$REALM/users?username=$ADMIN_USER&exact=true" | jq -r '.[0].id')
   echo "пользователь $ADMIN_USER создан ($uid)"
 else
-  echo "пользователь $ADMIN_USER уже есть ($uid)"
+  kc PUT "/admin/realms/$REALM/users/$uid" "$tmp/user.json" >/dev/null
+  echo "пользователь $ADMIN_USER обновлён ($uid, email=$ADMIN_EMAIL)"
 fi
 
 admins_id=$(cat "$tmp/group-admins")

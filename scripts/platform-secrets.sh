@@ -98,7 +98,7 @@ apply llm litellm-sso \
   GENERIC_USER_EMAIL_ATTRIBUTE=email \
   GENERIC_USER_DISPLAY_NAME_ATTRIBUTE=name \
   "PROXY_BASE_URL=${LITELLM_URL}" \
-  PROXY_ADMIN_ID=pauel@llm-platform.local
+  PROXY_ADMIN_ID=pauel@llm-platform.io
 
 # Копия API-ключей проекта platform для глобального колбэка LiteLLM: туда идут вызовы
 # ключей без metadata.logging, например master key.
