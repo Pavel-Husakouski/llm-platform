@@ -146,9 +146,11 @@ Service `postgres` — ещё и NodePort `:30432` (в kind проброшен �
 - LiteLLM: SSO UI через env `GENERIC_*` и `PROXY_BASE_URL` (redirect `/sso/callback`),
   `PROXY_ADMIN_ID=pauel@llm-platform.io`.
 - Langfuse: SSO через `AUTH_KEYCLOAK_*` (блок `auth.providers.keycloak` чарта), redirect
-  `/api/auth/callback/keycloak`. Локальный `admin` остаётся: `make tenant` ходит в Langfuse по
-  паролю (credentials), отключать username/password нельзя. Роли `admins`/`viewers` из Keycloak
-  не маппятся — доступ внутри Langfuse даётся на уровне org/проекта, по email.
+  `/api/auth/callback/keycloak`. `signUpDisabled=false` обязателен: `AUTH_DISABLE_SIGNUP=true`
+  блокирует и SSO (первый вход создаёт аккаунт). Локальный `admin` остаётся: `make tenant`
+  ходит в Langfuse по паролю (credentials), отключать username/password нельзя. Роли
+  `admins`/`viewers` из Keycloak не маппятся — доступ внутри Langfuse даётся на уровне
+  org/проекта, по email.
 
 Prometheus, ClickHouse и Postgres — backend'ы, не OIDC-цели.
 

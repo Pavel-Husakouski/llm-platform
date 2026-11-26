@@ -40,7 +40,10 @@ spec:
                 issuer: {{ .Values.keycloakUrl }}/realms/platform
           features:
             telemetryEnabled: false
-            signUpDisabled: true
+            # false: SSO (OIDC) создаёт аккаунт при первом входе — AUTH_DISABLE_SIGNUP=true
+            # блокирует и SSO ("Sign up is disabled" в adapter createUser). Форма signup при этом
+            # видна, но стенд LAN-only, а новые аккаунты не получают доступа к org платформы.
+            signUpDisabled: false
           # Headless init: org, проект platform с API-ключами для LiteLLM, пользователь UI.
           # Проекты тенантов создаёт make tenant.
           additionalEnvFrom:
