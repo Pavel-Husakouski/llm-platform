@@ -10,7 +10,7 @@ source "$(dirname "$0")/lib.sh"
 # После переустановки k3s: секреты из бэкапа на хосте, данные в томах зашифрованы и закрыты ими.
 restore_secrets
 
-for ns in llm langfuse monitoring platform keycloak; do namespace "$ns"; done
+for ns in llm langfuse monitoring platform keycloak n8n dify; do namespace "$ns"; done
 
 if [ -n "${DEEPSEEK_API_KEY:-}" ]; then
   apply llm deepseek "DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY"
@@ -67,6 +67,22 @@ apply monitoring grafana-clickhouse \
 once llm litellm \
   "LITELLM_MASTER_KEY=sk-master-$(rand 16)" \
   "POSTGRES_PASSWORD=$(rand 20)"
+
+# n8n (queue mode): пароль его Postgres, encryption key (шифрует credentials) и JWT-секрет.
+# Owner-аккаунт UI пользователь создаёт при первом входе: SSO в community-редакции нет.
+once n8n n8n \
+  "POSTGRES_PASSWORD=$(rand 20)" \
+  "N8N_ENCRYPTION_KEY=$(rand 32)" \
+  "N8N_USER_MANAGEMENT_JWT_SECRET=$(rand 32)"
+
+# Dify: SECRET_KEY (сессии/шифрование в БД), INNER_API_KEY (внутренние вызовы api/worker) и
+# пароли его Postgres/Redis. Chart кладёт их в общие DB_PASSWORD/REDIS_PASSWORD и берёт
+# литералом из root-app (make root): в git этих значений нет.
+once dify dify \
+  "SECRET_KEY=$(rand 32)" \
+  "INNER_API_KEY=$(rand 32)" \
+  "POSTGRES_PASSWORD=$(rand 20)" \
+  "REDIS_PASSWORD=$(rand 20)"
 
 # Keycloak (SSO): bootstrap admin master-realm, пароль его Postgres и client secret'ы OIDC.
 # Client secret'ы генерим заранее и кладём в keycloak/oidc: make keycloak ставит их на клиенты,

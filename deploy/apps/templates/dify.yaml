@@ -1,0 +1,146 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: dify
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  # Chart dify не умеет брать SECRET_KEY/INNER_API_KEY/пароли БД из existingSecret — только
+  # литерал или ExternalSecret-оператор. Поэтому 4 значения make root подставляет в root-app
+  # (valuesObject), как langfuseURL: их нет в git. PVC для файлового хранилища и NodePort на
+  # gateway chart не создаёт — их кладёт companion-источник deploy/dify (nodeport.yaml).
+  sources:
+    - repoURL: https://langgenius.github.io/dify-helm
+      chart: dify
+      targetRevision: {{ .Values.charts.dify }}
+      helm:
+        valuesObject:
+          global:
+            appSecretKey: {{ .Values.difySecretKey | quote }}
+            innerApiKey: {{ .Values.difyInnerApiKey | quote }}
+            useTLS: false
+            externalPort: {{ .Values.difyPort }}
+            consoleApiDomain: {{ .Values.difyHost | quote }}
+            consoleWebDomain: {{ .Values.difyHost | quote }}
+            serviceApiDomain: {{ .Values.difyHost | quote }}
+            appApiDomain: {{ .Values.difyHost | quote }}
+            appWebDomain: {{ .Values.difyHost | quote }}
+            filesDomain: {{ .Values.difyHost | quote }}
+          api:
+            enabled: true
+            resources:
+              requests: { cpu: 250m, memory: 512Mi }
+              limits: { memory: 2Gi }
+          worker:
+            enabled: true
+            resources:
+              requests: { cpu: 250m, memory: 512Mi }
+              limits: { memory: 2Gi }
+          workerBeat:
+            enabled: true
+          web:
+            enabled: true
+            resources:
+              requests: { cpu: 100m, memory: 256Mi }
+              limits: { memory: 1Gi }
+          gateway:
+            enabled: true
+            resources:
+              requests: { cpu: 50m, memory: 64Mi }
+              limits: { memory: 256Mi }
+          sandbox:
+            enabled: true
+            resources:
+              requests: { cpu: 50m, memory: 128Mi }
+              limits: { memory: 512Mi }
+          agentBackend:
+            enabled: true
+            resources:
+              requests: { cpu: 100m, memory: 256Mi }
+              limits: { memory: 1Gi }
+          # Enterprise-компоненты не ставим: SSO и RBAC — Enterprise, community-редакция
+          # обходится api/worker/web/gateway/sandbox + хранилища.
+          enterprise:
+            enabled: false
+          enterpriseCollector:
+            enabled: false
+          enterpriseAudit:
+            enabled: false
+          enterpriseFrontend:
+            enabled: false
+          enterpriseRbac:
+            enabled: false
+          # RAG-etlType = dify: отдельный Unstructured-сервис не нужен.
+          unstructured:
+            enabled: false
+          # Свои Postgres и Redis в чарте, внешние выключены. Пароли — литерал (см. выше),
+          # подставляет make root; chart кладёт их в общий DB_PASSWORD/REDIS_PASSWORD.
+          externalDatabase:
+            enabled: false
+          postgresql:
+            enabled: true
+            global:
+              storageClass: platform
+              postgresql:
+                auth:
+                  postgresPassword: {{ .Values.difyPostgresPassword | quote }}
+                  database: dify
+            primary:
+              persistence:
+                size: 5Gi
+          externalRedis:
+            enabled: false
+          redis:
+            enabled: true
+            # standalone, а не replication (bitnami по умолчанию): иначе 3 реплики с PVC.
+            architecture: standalone
+            global:
+              redis:
+                password: {{ .Values.difyRedisPassword | quote }}
+            master:
+              persistence:
+                storageClass: platform
+                size: 1Gi
+          # Векторы — bundled weaviate, без API-ключа (anonymous, ClusterIP): ключ не нужен,
+          # наружу weaviate не торчит. apikey.enabled=false обязателен: шаблоны chart
+          # 3.13.4 ссылаются на weaviate.authentication.apikey, которого нет в bundled
+          # weaviate 16.1.0 (там anonymous_access) — без явного false helm падает с nil.
+          vectorDB:
+            useExternal: false
+          weaviate:
+            enabled: true
+            authentication:
+              apikey:
+                enabled: false
+                allowed_keys: []
+              anonymous_access:
+                enabled: true
+            service:
+              type: ClusterIP
+            storage:
+              storageClassName: platform
+              size: 5Gi
+          # Файловое хранилище — PVC dify-backend-pvc из companion-источника. Значения
+          # accessModes/size chart не рендерит (PVC он не создаёт), оставлены для читаемости.
+          persistence:
+            type: local
+            local:
+              persistentVolumeClaim:
+                accessModes: ReadWriteOnce
+                size: 5Gi
+    - repoURL: {{ .Values.repoURL }}
+      targetRevision: {{ .Values.targetRevision }}
+      path: deploy/dify
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dify
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

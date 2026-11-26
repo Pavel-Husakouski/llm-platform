@@ -20,6 +20,12 @@ spec:
         langfuseURL: http://localhost:13300
         keycloakUrl: http://localhost:14040
         grafanaUrl: http://localhost:13030
+        difyHost: localhost
+        difyPort: 14600
+        difySecretKey: CHANGE_ME
+        difyInnerApiKey: CHANGE_ME
+        difyPostgresPassword: CHANGE_ME
+        difyRedisPassword: CHANGE_ME
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

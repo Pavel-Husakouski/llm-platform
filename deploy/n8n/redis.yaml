@@ -1,0 +1,75 @@
+# Redis для очереди n8n (queue mode): Bull держит здесь задания workers. В отличие от
+# кэша LiteLLM очередь терять нельзя, поэтому данные на PVC с appendonly.
+apiVersion: v1
+kind: Service
+metadata:
+  name: n8n-redis
+  labels:
+    app.kubernetes.io/name: n8n-redis
+spec:
+  selector:
+    app.kubernetes.io/name: n8n-redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: n8n-redis
+  labels:
+    app.kubernetes.io/name: n8n-redis
+spec:
+  # serviceName любой, не headless: под один, доступ через Service n8n-redis.
+  serviceName: n8n-redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: n8n-redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: n8n-redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          args:
+            - redis-server
+            - --appendonly
+            - "yes"
+            - --maxmemory
+            - 256mb
+            - --maxmemory-policy
+            - noeviction
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        storageClassName: platform
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

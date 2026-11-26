@@ -2,7 +2,8 @@
 
 Общая LLM-инфраструктура для локальных проектов в k3s на выделенном хосте (или в локальном
 kind): LiteLLM (шлюз к провайдерам, virtual keys с бюджетом), Langfuse (трейсы и score) на
-общем ClickHouse, общие ClickHouse и Postgres (pgvector) для баз проектов, Prometheus,
+общем ClickHouse, n8n (автоматизация, queue mode) и Dify (LLM-платформа с RAG) — каждый со
+своим хранилищем, общие ClickHouse и Postgres (pgvector) для баз проектов, Prometheus,
 Grafana и Argo Rollouts.
 Всё ставит Argo CD из этого репо. Проекты подключаются как тенанты: каждый получает свой
 virtual key и свой проект Langfuse, а свои Application кладёт в тот же Argo CD.
@@ -27,8 +28,8 @@ make k3s-uninstall            # удаляет k3s с хоста; данные �
 
 ### Данные переживают переустановку k3s
 
-Тома платформы (ClickHouse, Postgres — LiteLLM, Langfuse и общий, Redis и S3 Langfuse,
-Grafana) — на StorageClass
+Тома платформы (ClickHouse, Postgres — LiteLLM, Langfuse, n8n, Dify и общий, Redis и S3
+Langfuse, Redis n8n, Weaviate Dify, Grafana) — на StorageClass
 `platform` (`deploy/storage`): каталог `/srv/llm-platform/volumes/<ns>/<pvc>/` на хосте,
 `Retain`. Секреты, без которых эти данные не прочитать, `make secret`, `make tenant`,
 `make tenant-delete` и `make grafana-token` копируют на хост в `/srv/llm-platform/secrets/`
@@ -54,6 +55,8 @@ TARGET=kind` удаляет kind-кластер).
 | Grafana    | http://HOST:30030               | http://localhost:13030              | admin, `make grafana-password`                |
 | Langfuse   | http://HOST:30300               | http://localhost:13300              | admin@llm-platform.local, `make langfuse-password` |
 | LiteLLM    | http://HOST:30400/ui            | http://localhost:14000/ui           | admin, `make litellm-password` (master key)   |
+| n8n        | http://HOST:30500               | http://localhost:14500              | owner-аккаунт при первом входе                |
+| Dify       | http://HOST:30600               | http://localhost:14600              | admin при первом входе                        |
 | Embeddings | http://HOST:30180/health        | http://localhost:18180/health       | TEI `intfloat/multilingual-e5-base`, в LiteLLM alias `embed` |
 | ClickHouse | http://HOST:30123/play, :30900  | http://localhost:18123/play, :19000 | clickhouse, `make clickhouse-password`        |
 | Postgres   | postgres.platform:5432 (в кластере) | postgres.platform:5432 (в кластере) | роль `<name>`, пароль в `platform-postgres`   |
@@ -64,6 +67,12 @@ TARGET=kind` удаляет kind-кластер).
 
 Langfuse пускает в UI только по адресу из `langfuseURL` (NEXTAUTH_URL), его подставляет
 `make root` по `TARGET`.
+
+n8n и Dify **не** подключены к Keycloak: SSO (OIDC) в обоих — функция Enterprise-редакции
+(n8n к тому же требует HTTPS). Вход — по локальному аккаунту, который создаётся при первом
+открытии UI. Dify адресуется снаружи по `difyHost`/`difyPort` (их подставляет `make root`),
+а его секреты — по `difySecretKey`/`difyInnerApiKey`/`difyPostgresPassword`/
+`difyRedisPassword`, которые `make root` берёт из Secret `dify/dify` (создаёт `make secret`).
 
 Плагин kubectl для выкаток тенантов (`kubectl argo rollouts get/promote/abort/retry`):
 

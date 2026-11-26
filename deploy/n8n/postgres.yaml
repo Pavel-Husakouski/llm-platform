@@ -1,0 +1,86 @@
+# Postgres для n8n (queue mode): workflows, executions и credentials. Данные на PVC,
+# как у Postgres LiteLLM. Пароль — в Secret n8n (создаёт make secret).
+apiVersion: v1
+kind: Service
+metadata:
+  name: n8n-postgres
+  labels:
+    app.kubernetes.io/name: n8n-postgres
+spec:
+  selector:
+    app.kubernetes.io/name: n8n-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: n8n-postgres
+  labels:
+    app.kubernetes.io/name: n8n-postgres
+spec:
+  serviceName: n8n-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: n8n-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: n8n-postgres
+    spec:
+      securityContext:
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          env:
+            - name: POSTGRES_USER
+              value: n8n
+            - name: POSTGRES_DB
+              value: n8n
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: n8n
+                  key: POSTGRES_PASSWORD
+            # Каталог данных внутри тома: в корне тома lost+found мешает initdb.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          # TCP вместо exec pg_isready: exec-проба — новый процесс через containerd. Готовность
+          # базы к запросам проверяет init-контейнер n8n и его /healthz.
+          readinessProbe:
+            tcpSocket:
+              port: postgres
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: postgres
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        # Постоянный каталог хоста, переживает переустановку k3s (deploy/storage).
+        storageClassName: platform
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

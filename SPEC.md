@@ -12,13 +12,15 @@
 | `postgres`      | `platform`      | `deploy/postgres`, общий (БД тенантов), NodePort :30432 |
 | `langfuse`      | `langfuse`      | chart langfuse, внешний ClickHouse         |
 | `litellm`       | `llm`           | `deploy/litellm`, свой Postgres            |
+| `n8n`           | `n8n`           | `deploy/n8n`, queue mode, свои Postgres и Redis |
+| `dify`          | `dify`          | chart dify + `deploy/dify`, свои Postgres/Redis/Weaviate |
 | `embeddings`    | `tei`           | `deploy/embeddings`, TEI, alias `embed`    |
 | `grafana`       | `monitoring`    | chart grafana (grafana-community)          |
 | `keycloak`      | `keycloak`      | `deploy/keycloak`, свой Postgres           |
 
 Кластер — k3s на выделенном хосте (`TARGET=k3s`, по умолчанию) или локальный kind
 (`TARGET=kind`). Манифесты одинаковы, различаются только адреса NodePort снаружи и
-`langfuseURL`/`keycloakUrl`/`grafanaUrl`, которые подставляет `make root`.
+`langfuseURL`/`keycloakUrl`/`grafanaUrl`/`difyHost`/`difyPort`, которые подставляет `make root`.
 
 Argo CD ставит `make argocd` из helm (`deploy/bootstrap/argocd-values.yaml`), всё остальное
 синхронизируется из git. Argo Rollouts (CRD) и Prometheus (scrape подов по аннотациям
@@ -152,7 +154,9 @@ Service `postgres` — ещё и NodePort `:30432` (в kind проброшен �
   `admins`/`viewers` из Keycloak не маппятся — доступ внутри Langfuse даётся на уровне
   org/проекта, по email.
 
-Prometheus, ClickHouse и Postgres — backend'ы, не OIDC-цели.
+Prometheus, ClickHouse и Postgres — backend'ы, не OIDC-цели. n8n и Dify тоже не подключены к
+Keycloak: OIDC-SSO у обоих — Enterprise (n8n дополнительно требует HTTPS), в community-редакции
+его нет. Вход у них — по локальному аккаунту, создаваемому при первом открытии UI.
 
 В kind SSO не работает: `keycloakUrl`/issuer — `http://localhost:14040`, а подам внутри
 кластера `localhost` недоступен (это их собственный loopback). Ограничение только локальной
@@ -167,7 +171,7 @@ Prometheus, ClickHouse и Postgres — backend'ы, не OIDC-цели.
   local-path, `pathPattern: <ns>/<pvc>/` и `Retain`. PVC с тем же именем после переустановки
   получает тот же каталог с данными.
 - `secrets/secrets.json` — бэкап секретов платформы: Opaque в `llm`, `langfuse`, `monitoring`,
-  `platform` и `keycloak` без метки `app.kubernetes.io/instance` (те создают чарты). Пишется по ssh в конце `make secret`,
+  `platform`, `keycloak`, `n8n` и `dify` без метки `app.kubernetes.io/instance` (те создают чарты). Пишется по ssh в конце `make secret`,
   `tenant`, `tenant-delete`, `grafana-token`; `make secret` в начале создаёт из него секреты,
   которых нет в кластере, и только потом генерирует недостающие. Без него тома бесполезны:
   пароли Postgres заданы при инициализации, данные Langfuse зашифрованы `encryption-key`.
@@ -205,6 +209,12 @@ DeepSeek берётся из `DEEPSEEK_API_KEY` и обновляется при
   (из `keycloak/oidc` и адресов SSO);
 - `langfuse/langfuse-sso`: `LANGFUSE_CLIENT_SECRET` (из `keycloak/oidc`) для SSO Langfuse,
   читает `langfuse-web` через `secretKeyRef` чарта;
+- `n8n/n8n`: пароль Postgres, `N8N_ENCRYPTION_KEY` (шифрует credentials) и
+  `N8N_USER_MANAGEMENT_JWT_SECRET`;
+- `dify/dify`: `SECRET_KEY` (сессии/шифрование в БД), `INNER_API_KEY` (внутренние вызовы
+  api/worker) и пароли его Postgres/Redis. В отличие от остальных, chart Dify берёт их
+  литералом из root-app (`make root` подставляет значения из этого секрета), а не через
+  `secretKeyRef` — chart не поддерживает `existingSecret`;
 - `llm/tenant-<name>`: ключи тенанта (virtual key, id и API-ключи проекта Langfuse, пароль
   роли Postgres), источник для `platform-llm` и `platform-postgres`.
 

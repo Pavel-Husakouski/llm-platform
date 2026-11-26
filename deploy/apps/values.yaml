@@ -11,6 +11,20 @@ langfuseURL: http://localhost:13300
 keycloakUrl: http://localhost:14040
 grafanaUrl: http://localhost:13030
 
+# Dify (chart, namespace dify): адрес UI снаружи — хост и порт NodePort. В kind — localhost,
+# в k3s их подставляет make root по TARGET (как langfuseURL).
+difyHost: localhost
+difyPort: 14600
+
+# Секреты Dify. Chart не умеет брать их из existingSecret (только литерал или
+# ExternalSecret-оператор), поэтому make root подставляет настоящие значения из Secret
+# dify/dify (создаёт make secret) в root-app valuesObject. Здесь — нерабочие заглушки:
+# настоящих значений в git нет.
+difySecretKey: CHANGE_ME
+difyInnerApiKey: CHANGE_ME
+difyPostgresPassword: CHANGE_ME
+difyRedisPassword: CHANGE_ME
+
 # Версии сторонних charts фиксированы: обновление — отдельный коммит. Langfuse обновлять
 # осторожно: make tenant ходит во внутренний tRPC UI (см. SPEC.md).
 charts:
@@ -22,3 +36,5 @@ charts:
   grafana: 14.4.0
   # Плагин источника данных ClickHouse в Grafana.
   grafanaClickhouse: 4.23.4
+  # Dify (langgenius/dify-helm).
+  dify: 3.13.4

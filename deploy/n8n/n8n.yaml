@@ -1,0 +1,140 @@
+# n8n в queue mode: editor + workers (main) с Postgres под БД и Redis под очередь.
+# SSO (OIDC) в community-редакции нет — вход по owner-аккаунту, его n8n предлагает создать
+# при первом открытии UI. Ключи (encryption key, JWT, пароль Postgres) — в Secret n8n.
+apiVersion: v1
+kind: Service
+metadata:
+  name: n8n
+  labels:
+    app.kubernetes.io/name: n8n
+spec:
+  # NodePort: UI на <HOST>:30500 в k3s, на localhost:14500 в kind (extraPortMappings)
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: n8n
+  ports:
+    - name: http
+      port: 5678
+      targetPort: http
+      nodePort: 30500
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: n8n
+  labels:
+    app.kubernetes.io/name: n8n
+spec:
+  # serviceName любой, не headless: под один, доступ через Service n8n.
+  serviceName: n8n
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: n8n
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: n8n
+    spec:
+      # Без БД n8n падает на миграциях: ждём Postgres заранее, как у LiteLLM.
+      initContainers:
+        - name: wait-postgres
+          image: postgres:17-alpine
+          command:
+            - sh
+            - -c
+            - until pg_isready -h n8n-postgres -p 5432 -U n8n; do sleep 2; done
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+      containers:
+        - name: n8n
+          image: docker.n8n.io/n8nio/n8n:1.123.102
+          ports:
+            - name: http
+              containerPort: 5678
+          env:
+            - name: N8N_HOST
+              value: 0.0.0.0
+            - name: N8N_PORT
+              value: "5678"
+            - name: N8N_PROTOCOL
+              value: http
+            # Queue mode: editor кладёт задания в Redis, workers их исполняют.
+            - name: N8N_EXECUTIONS_MODE
+              value: queue
+            - name: DB_TYPE
+              value: postgresdb
+            - name: DB_POSTGRESDB_HOST
+              value: n8n-postgres
+            - name: DB_POSTGRESDB_PORT
+              value: "5432"
+            - name: DB_POSTGRESDB_DATABASE
+              value: n8n
+            - name: DB_POSTGRESDB_USER
+              value: n8n
+            - name: DB_POSTGRESDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: n8n
+                  key: POSTGRES_PASSWORD
+            - name: QUEUE_BULL_REDIS_HOST
+              value: n8n-redis
+            - name: QUEUE_BULL_REDIS_PORT
+              value: "6379"
+            - name: QUEUE_BULL_REDIS_DB
+              value: "0"
+            - name: N8N_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: n8n
+                  key: N8N_ENCRYPTION_KEY
+            - name: N8N_USER_MANAGEMENT_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: n8n
+                  key: N8N_USER_MANAGEMENT_JWT_SECRET
+            # LAN-стенд: без телеметрии и персонализации.
+            - name: N8N_DIAGNOSTICS_ENABLED
+              value: "false"
+            - name: N8N_PERSONALIZATION_ENABLED
+              value: "false"
+          # Старт с миграциями БД занимает до минуты.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 1536Mi
+          volumeMounts:
+            - name: data
+              mountPath: /home/node/.n8n
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        storageClassName: platform
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

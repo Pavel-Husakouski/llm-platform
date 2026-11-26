@@ -23,6 +23,14 @@ nodes:
       - containerPort: 30400
         hostPort: 14000
         listenAddress: 127.0.0.1
+      # n8n UI
+      - containerPort: 30500
+        hostPort: 14500
+        listenAddress: 127.0.0.1
+      # Dify UI (gateway)
+      - containerPort: 30600
+        hostPort: 14600
+        listenAddress: 127.0.0.1
       # TEI-эмбеддинги (alias embed в LiteLLM)
       - containerPort: 30180
         hostPort: 18180

@@ -27,7 +27,7 @@ TOOLS_DIR      ?= $(HOME)/.local/bin
 REVISION       ?= main
 WAIT_TIMEOUT   ?= 900
 # Application платформы: make wait не ждёт Application тенантов.
-APPS           := llm-platform storage argo-rollouts prometheus clickhouse postgres langfuse litellm embeddings grafana keycloak
+APPS           := llm-platform storage argo-rollouts prometheus clickhouse postgres langfuse litellm embeddings grafana keycloak n8n dify
 
 # make tenant NAME=agent NS=agent BUDGET=1 MODELS=deepseek-flash
 NS             ?= $(NAME)
@@ -45,6 +45,10 @@ GRAFANA_URL    := $(URL):30030
 KEYCLOAK_URL   := $(URL):30040
 LANGFUSE_URL   := $(URL):30300
 LITELLM_URL    := $(URL):30400
+N8N_URL        := $(URL):30500
+DIFY_URL       := $(URL):30600
+DIFY_HOST      := $(HOST)
+DIFY_PORT      := 30600
 EMBEDDINGS_URL := $(URL):30180
 CLICKHOUSE_URL := $(URL):30123
 CLICKHOUSE_TCP := $(HOST):30900
@@ -61,6 +65,10 @@ GRAFANA_URL    := $(URL):13030
 KEYCLOAK_URL   := $(URL):14040
 LANGFUSE_URL   := $(URL):13300
 LITELLM_URL    := $(URL):14000
+N8N_URL        := $(URL):14500
+DIFY_URL       := $(URL):14600
+DIFY_HOST      := localhost
+DIFY_PORT      := 14600
 EMBEDDINGS_URL := $(URL):18180
 CLICKHOUSE_URL := $(URL):18123
 CLICKHOUSE_TCP := localhost:19000
@@ -156,12 +164,27 @@ argocd:
 	  | $(HELM) upgrade --install argocd argo-cd --repo $(ARGOCD_REPO) --version $(ARGOCD_CHART) \
 	    --namespace argocd --create-namespace --values - --wait --timeout 10m
 
-# Подставляет ветку, адрес Langfuse (NEXTAUTH_URL) и адреса SSO (Keycloak, Grafana) для TARGET.
+# Подставляет ветку, адрес Langfuse (NEXTAUTH_URL), адреса SSO (Keycloak, Grafana) и адрес
+# Dify для TARGET, а также 4 секрета Dify из Secret dify/dify (chart не берёт их из
+# existingSecret — см. deploy/apps/values.yaml).
 root:
+	@dify_secret=$$($(KUBECTL) -n dify get secret dify -o 'go-template={{index .data "SECRET_KEY" | base64decode}}' 2>/dev/null || true); \
+	dify_inner=$$($(KUBECTL) -n dify get secret dify -o 'go-template={{index .data "INNER_API_KEY" | base64decode}}' 2>/dev/null || true); \
+	dify_pg=$$($(KUBECTL) -n dify get secret dify -o 'go-template={{index .data "POSTGRES_PASSWORD" | base64decode}}' 2>/dev/null || true); \
+	dify_redis=$$($(KUBECTL) -n dify get secret dify -o 'go-template={{index .data "REDIS_PASSWORD" | base64decode}}' 2>/dev/null || true); \
+	if [ -z "$$dify_secret" ] || [ -z "$$dify_inner" ] || [ -z "$$dify_pg" ] || [ -z "$$dify_redis" ]; then \
+	  echo "нет Secret dify/dify: сначала make secret" >&2; exit 1; \
+	fi; \
 	sed -e 's#targetRevision: main#targetRevision: $(REVISION)#' \
 	  -e 's#langfuseURL: .*#langfuseURL: $(LANGFUSE_URL)#' \
 	  -e 's#keycloakUrl: .*#keycloakUrl: $(KEYCLOAK_URL)#' \
-	  -e 's#grafanaUrl: .*#grafanaUrl: $(GRAFANA_URL)#' deploy/bootstrap/root-app.yaml \
+	  -e 's#grafanaUrl: .*#grafanaUrl: $(GRAFANA_URL)#' \
+	  -e 's#difyHost: .*#difyHost: $(DIFY_HOST)#' \
+	  -e 's#difyPort: .*#difyPort: $(DIFY_PORT)#' \
+	  -e "s#difySecretKey: .*#difySecretKey: \"$$dify_secret\"#" \
+	  -e "s#difyInnerApiKey: .*#difyInnerApiKey: \"$$dify_inner\"#" \
+	  -e "s#difyPostgresPassword: .*#difyPostgresPassword: \"$$dify_pg\"#" \
+	  -e "s#difyRedisPassword: .*#difyRedisPassword: \"$$dify_redis\"#" deploy/bootstrap/root-app.yaml \
 	  | $(KUBECTL) apply -f -
 
 # Ждём, пока все Application платформы станут Synced и Healthy.
@@ -187,6 +210,8 @@ status:
 	@$(KUBECTL) get pods -n monitoring
 	@$(KUBECTL) get pods -n platform
 	@$(KUBECTL) get pods -n keycloak
+	@$(KUBECTL) get pods -n n8n
+	@$(KUBECTL) get pods -n dify
 	@echo "Keycloak:   $(KEYCLOAK_URL) (SSO: pauel, make keycloak-password)"
 	@echo "Argo CD UI: $(ARGOCD_URL) (SSO Keycloak, fallback admin: make argocd-password)"
 	@echo "Prometheus: $(PROMETHEUS_URL)"
@@ -194,6 +219,8 @@ status:
 	@echo "LiteLLM:    $(LITELLM_URL)/ui (SSO Keycloak, master key: make litellm-password)"
 	@echo "Embeddings: $(EMBEDDINGS_URL)/health (alias embed в LiteLLM)"
 	@echo "Grafana:    $(GRAFANA_URL) (SSO Keycloak, fallback admin: make grafana-password)"
+	@echo "n8n:        $(N8N_URL) (owner-аккаунт при первом входе; SSO — Enterprise)"
+	@echo "Dify:       $(DIFY_URL) (admin при первом входе; SSO — Enterprise)"
 	@echo "ClickHouse: $(CLICKHOUSE_URL)/play, native $(CLICKHOUSE_TCP) (clickhouse, make clickhouse-password)"
 	@echo "Postgres:   postgres.platform:5432, NodePort $(POSTGRES_TCP) (БД тенантов, make postgres-password)"
 	@echo "Тенанты:    $(TENANT_PORTS)"
