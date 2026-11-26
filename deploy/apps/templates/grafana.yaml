@@ -59,7 +59,7 @@ spec:
             name: Keycloak
             client_id: grafana
             client_secret: $__env{GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET}
-            scopes: openid email profile groups
+            scopes: openid email profile
             auth_url: {{ .Values.keycloakUrl }}/realms/platform/protocol/openid-connect/auth
             token_url: {{ .Values.keycloakUrl }}/realms/platform/protocol/openid-connect/token
             api_url: {{ .Values.keycloakUrl }}/realms/platform/protocol/openid-connect/userinfo

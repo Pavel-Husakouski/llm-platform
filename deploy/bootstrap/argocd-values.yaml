@@ -19,7 +19,8 @@ configs:
       issuer: KEYCLOAK_URL/realms/platform
       clientID: argocd
       clientSecret: $oidc.Keycloak.clientSecret
-      requestedScopes: ["openid", "profile", "email", "groups"]
+      # groups — не scope в Keycloak (иначе invalid_scope): claim добавляет маппер клиента (make keycloak).
+      requestedScopes: ["openid", "profile", "email"]
     # Health для Application: без него sync waves в app-of-apps не ждут готовности дочерних
     # приложений, и Rollout тенанта синхронизируется раньше, чем появятся CRD Argo Rollouts.
     resource.customizations.health.argoproj.io_Application: |
