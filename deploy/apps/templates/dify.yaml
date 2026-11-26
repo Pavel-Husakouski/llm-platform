@@ -33,6 +33,9 @@ spec:
             # Без triggerDomain чарт рендерит TRIGGER_URL=http://:PORT (пустой хост) — yarl
             # падает на импорте, CrashLoop у api/worker/gateway.
             triggerDomain: {{ .Values.difyHost | quote }}
+            # enterprise-компоненты выключены, но caddy-config рендерит site-блок и Origin для
+            # enterpriseDomain безусловно — пустой хост даёт http://:3080 и роняет caddy.
+            enterpriseDomain: {{ .Values.difyHost | quote }}
           api:
             enabled: true
             resources:
