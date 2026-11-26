@@ -30,6 +30,9 @@ spec:
             appApiDomain: {{ .Values.difyHost | quote }}
             appWebDomain: {{ .Values.difyHost | quote }}
             filesDomain: {{ .Values.difyHost | quote }}
+            # Без triggerDomain чарт рендерит TRIGGER_URL=http://:PORT (пустой хост) — yarl
+            # падает на импорте, CrashLoop у api/worker/gateway.
+            triggerDomain: {{ .Values.difyHost | quote }}
           api:
             enabled: true
             resources:
