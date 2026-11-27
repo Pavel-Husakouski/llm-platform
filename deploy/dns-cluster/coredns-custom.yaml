@@ -1,8 +1,8 @@
-# Внутрикластерный DNS для *.llm.internal: поды (Grafana/LiteLLM/Langfuse/Argo CD валидируют
-# OIDC-issuer https://keycloak.llm.internal) не видят dnsmasq из deploy/dns — тот на hostPort 53
-# для LAN-клиентов. Здесь k3s CoreDNS получает зону llm.internal и форвардит её в тот же
-# dnsmasq (hostPort 53 на узле 192.168.50.195, с подов доступен по IP узла). Corefile k3s уже
-# импортирует этот ConfigMap: import /etc/coredns/custom/*.server (см. kube-system/coredns).
+# Внутрикластерный DNS для issuer Keycloak: поды (Grafana/LiteLLM/Langfuse/Argo CD валидируют
+# OIDC-issuer) резолвят keycloak.llm.internal -> хост (nginx edge :80). Точечный hosts, а НЕ
+# forward в dnsmasq: у подов в search-доменах есть llm.internal, и жадный wildcard dnsmasq
+# (*.llm.internal) отвечал бы на foo.svc.cluster.local.llm.internal хост-IP, ломая сервис-DNS.
+# Corefile k3s уже импортирует этот ConfigMap: import /etc/coredns/custom/*.server.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -12,5 +12,7 @@ data:
   llm-internal.server: |
     llm.internal:53 {
         errors
-        forward . 192.168.50.195
+        hosts {
+            192.168.50.195 keycloak.llm.internal
+        }
     }
