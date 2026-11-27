@@ -27,7 +27,7 @@ TOOLS_DIR      ?= $(HOME)/.local/bin
 REVISION       ?= main
 WAIT_TIMEOUT   ?= 900
 # Application платформы: make wait не ждёт Application тенантов.
-APPS           := llm-platform storage argo-rollouts prometheus clickhouse postgres langfuse litellm embeddings grafana keycloak n8n dify
+APPS           := llm-platform storage dns argo-rollouts prometheus clickhouse postgres langfuse litellm embeddings grafana keycloak n8n dify
 
 # make tenant NAME=agent NS=agent BUDGET=1 MODELS=deepseek-flash
 NS             ?= $(NAME)
@@ -212,6 +212,7 @@ status:
 	@$(KUBECTL) get pods -n keycloak
 	@$(KUBECTL) get pods -n n8n
 	@$(KUBECTL) get pods -n dify
+	@$(KUBECTL) get pods -n dns
 	@echo "Keycloak:   $(KEYCLOAK_URL) (SSO: pauel, make keycloak-password)"
 	@echo "Argo CD UI: $(ARGOCD_URL) (SSO Keycloak, fallback admin: make argocd-password)"
 	@echo "Prometheus: $(PROMETHEUS_URL)"
