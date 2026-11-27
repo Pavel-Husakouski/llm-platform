@@ -1,0 +1,113 @@
+# Единая точка входа (edge): nginx терминирует TLS по wildcard *.llm.internal и проксирует
+# по Host-заголовку. hostPort 80/443 на узле k3s — NodePort не умеет порт 443 (диапазон
+# 30000–32767), а ingress-контроллер в стенде не нужен. Сертификат — Secret edge-tls
+# (type kubernetes.io/tls), его создаёт make edge-tls (в git его нет); под монтирует его по
+# имени secretName. Фаза 1 — только n8n.llm.internal, остальные поддомены — фаза 2.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  labels:
+    app.kubernetes.io/name: edge
+data:
+  nginx.conf: |
+    error_log /dev/stderr warn;
+    pid /tmp/nginx.pid;
+
+    events {}
+
+    http {
+      access_log /dev/stdout;
+
+      # websocket редактора n8n (/rest/push): держим upgrade-соединение, а не шлём его как http.
+      map $http_upgrade $connection_upgrade {
+        default upgrade;
+        ''      close;
+      }
+
+      server {
+        listen 80;
+        server_name n8n.llm.internal;
+        return 301 https://$host$request_uri;
+      }
+
+      server {
+        listen 443 ssl;
+        server_name n8n.llm.internal;
+
+        ssl_certificate     /etc/nginx/tls/tls.crt;
+        ssl_certificate_key /etc/nginx/tls/tls.key;
+        ssl_protocols       TLSv1.2 TLSv1.3;
+
+        location / {
+          proxy_pass http://n8n.n8n.svc.cluster.local:5678;
+          proxy_http_version 1.1;
+          proxy_set_header Host              $host;
+          proxy_set_header X-Real-IP         $remote_addr;
+          proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header X-Forwarded-Host  $host;
+          proxy_set_header Upgrade           $http_upgrade;
+          proxy_set_header Connection        $connection_upgrade;
+          # Вебхуки и websocket n8n работают долго — не гасим соединение по умолчанию.
+          proxy_read_timeout 3600s;
+          proxy_send_timeout 3600s;
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edge
+  labels:
+    app.kubernetes.io/name: edge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: edge
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: edge
+    spec:
+      containers:
+        - name: nginx
+          # официальный образ: master-процесс под root биндит 80/443 внутри пода (hostPort).
+          image: nginx:1.27-alpine
+          ports:
+            - name: http
+              containerPort: 80
+              hostPort: 80
+            - name: https
+              containerPort: 443
+              hostPort: 443
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            - name: tls
+              mountPath: /etc/nginx/tls
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: https
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: https
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+      volumes:
+        - name: config
+          configMap:
+            name: nginx-config
+        - name: tls
+          secret:
+            secretName: edge-tls

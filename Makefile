@@ -27,7 +27,7 @@ TOOLS_DIR      ?= $(HOME)/.local/bin
 REVISION       ?= main
 WAIT_TIMEOUT   ?= 900
 # Application платформы: make wait не ждёт Application тенантов.
-APPS           := llm-platform storage dns argo-rollouts prometheus clickhouse postgres langfuse litellm embeddings grafana keycloak n8n dify
+APPS           := llm-platform storage dns edge argo-rollouts prometheus clickhouse postgres langfuse litellm embeddings grafana keycloak n8n dify
 
 # make tenant NAME=agent NS=agent BUDGET=1 MODELS=deepseek-flash
 NS             ?= $(NAME)
@@ -45,7 +45,7 @@ GRAFANA_URL    := $(URL):30030
 KEYCLOAK_URL   := $(URL):30040
 LANGFUSE_URL   := $(URL):30300
 LITELLM_URL    := $(URL):30400
-N8N_URL        := $(URL):30500
+N8N_URL        := https://n8n.llm.internal
 DIFY_URL       := http://console.dify.llm.internal:30600
 DIFY_HOST      := dify.llm.internal
 DIFY_PORT      := 30600
@@ -83,11 +83,11 @@ endif
 KUBECTL := kubectl --context $(CONTEXT)
 HELM    := helm --kube-context $(CONTEXT)
 
-.PHONY: up down cluster secret argocd root wait status stop start tenant tenant-key tenant-delete llm-budget tools keycloak \
+.PHONY: up down cluster secret edge-tls argocd root wait status stop start tenant tenant-key tenant-delete llm-budget tools keycloak \
   argocd-password langfuse-password litellm-password clickhouse-password postgres-password grafana-password keycloak-password keycloak-admin-password \
   grafana-token k3s-install k3s-storage k3s-uninstall kubeconfig
 
-up: cluster secret argocd root wait keycloak status
+up: cluster secret edge-tls argocd root wait keycloak status
 
 ifeq ($(TARGET),kind)
 down:
@@ -156,6 +156,11 @@ kubeconfig:
 
 secret:
 	@KUBECTL="$(KUBECTL)" $(SECRETS_BACKUP) KEYCLOAK_URL=$(KEYCLOAK_URL) LITELLM_URL=$(LITELLM_URL) scripts/platform-secrets.sh
+
+# Приватный CA + wildcard-сертификат *.llm.internal для nginx edge (deploy/edge). Ключ CA на
+# хосте k3s (SECRETS_DIR), сертификат — в Secret edge/edge-tls (type kubernetes.io/tls).
+edge-tls:
+	@KUBECTL="$(KUBECTL)" $(SECRETS_BACKUP) scripts/edge-tls.sh
 
 # Argo CD с OIDC → Keycloak: issuer и url подставляет sed по TARGET, client secret кладёт
 # make keycloak в argocd-secret (после установки).

@@ -61,8 +61,20 @@ spec:
               value: 0.0.0.0
             - name: N8N_PORT
               value: "5678"
+            # TLS терминирует nginx edge (deploy/edge) на https://n8n.llm.internal, сам n8n
+            # остаётся http:5678 внутри кластера. Внешние адреса задаём явно, иначе n8n соберёт
+            # их из Host/порта и webhook'и укажут на внутренний http.
             - name: N8N_PROTOCOL
-              value: http
+              value: https
+            - name: N8N_EDITOR_BASE_URL
+              value: https://n8n.llm.internal/
+            - name: WEBHOOK_URL
+              value: https://n8n.llm.internal/
+            # Один прокси перед n8n: доверять X-Forwarded-* и ставить Secure-куки.
+            - name: N8N_PROXY_HOPS
+              value: "1"
+            - name: N8N_SECURE_COOKIE
+              value: "true"
             # Queue mode: editor кладёт задания в Redis, workers их исполняют.
             - name: N8N_EXECUTIONS_MODE
               value: queue

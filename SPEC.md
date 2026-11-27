@@ -7,6 +7,7 @@
 | `llm-platform`  | `argocd`        | root-app, chart `deploy/apps`              |
 | `storage`       | —               | `deploy/storage`, StorageClass `platform`  |
 | `dns`           | `dns`           | `deploy/dns`, dnsmasq hostPort 53, `*.llm.internal` |
+| `edge`          | `edge`          | `deploy/edge`, nginx hostPort 80/443, TLS wildcard `*.llm.internal` |
 | `argo-rollouts` | `argo-rollouts` | chart argo-rollouts                        |
 | `prometheus`    | `monitoring`    | chart prometheus, только server            |
 | `clickhouse`    | `platform`      | `deploy/clickhouse`, общий                 |
