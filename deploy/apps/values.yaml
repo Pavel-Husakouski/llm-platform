@@ -11,8 +11,10 @@ langfuseURL: http://localhost:13300
 keycloakUrl: http://localhost:14040
 grafanaUrl: http://localhost:13030
 
-# Dify (chart, namespace dify): адрес UI снаружи — хост и порт NodePort. В kind — localhost,
-# в k3s их подставляет make root по TARGET (как langfuseURL).
+# Dify (chart, namespace dify): базовый домен для поддоменов (console./api./app./files./
+# trigger./enterprise.) — gateway Caddy роутит по Host-заголовку, поэтому нужен не один хост,
+# а отдельные поддомены на один IP. В kind — localhost (console.localhost и т.д. резолвятся в
+# 127.0.0.1), в k3s make root подставляет <HOST>.nip.io (как langfuseURL).
 difyHost: localhost
 difyPort: 14600
 

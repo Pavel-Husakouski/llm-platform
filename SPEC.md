@@ -21,6 +21,8 @@
 Кластер — k3s на выделенном хосте (`TARGET=k3s`, по умолчанию) или локальный kind
 (`TARGET=kind`). Манифесты одинаковы, различаются только адреса NodePort снаружи и
 `langfuseURL`/`keycloakUrl`/`grafanaUrl`/`difyHost`/`difyPort`, которые подставляет `make root`.
+`difyHost` — базовый домен Dify (поддомены `console.`/`api.`/`app.`/`files.`/`trigger.`/
+`enterprise.`), в k3s `<HOST>.nip.io`, в kind `localhost`.
 
 Argo CD ставит `make argocd` из helm (`deploy/bootstrap/argocd-values.yaml`), всё остальное
 синхронизируется из git. Argo Rollouts (CRD) и Prometheus (scrape подов по аннотациям

@@ -24,18 +24,21 @@ spec:
             innerApiKey: {{ .Values.difyInnerApiKey | quote }}
             useTLS: false
             externalPort: {{ .Values.difyPort }}
-            consoleApiDomain: {{ .Values.difyHost | quote }}
-            consoleWebDomain: {{ .Values.difyHost | quote }}
-            serviceApiDomain: {{ .Values.difyHost | quote }}
-            appApiDomain: {{ .Values.difyHost | quote }}
-            appWebDomain: {{ .Values.difyHost | quote }}
-            filesDomain: {{ .Values.difyHost | quote }}
+            # Caddy gateway роутит по Host-заголовку: каждому сервису нужен свой поддомен,
+            # иначе одинаковый хост даёт дубли site-адресов и Caddy падает (duplicate site
+            # address). difyHost — базовый домен (k3s: <HOST>.nip.io, kind: localhost).
+            consoleApiDomain: "console.{{ .Values.difyHost }}"
+            consoleWebDomain: "console.{{ .Values.difyHost }}"
+            serviceApiDomain: "api.{{ .Values.difyHost }}"
+            appApiDomain: "app.{{ .Values.difyHost }}"
+            appWebDomain: "app.{{ .Values.difyHost }}"
+            filesDomain: "files.{{ .Values.difyHost }}"
             # Без triggerDomain чарт рендерит TRIGGER_URL=http://:PORT (пустой хост) — yarl
             # падает на импорте, CrashLoop у api/worker/gateway.
-            triggerDomain: {{ .Values.difyHost | quote }}
+            triggerDomain: "trigger.{{ .Values.difyHost }}"
             # enterprise-компоненты выключены, но caddy-config рендерит site-блок и Origin для
             # enterpriseDomain безусловно — пустой хост даёт http://:3080 и роняет caddy.
-            enterpriseDomain: {{ .Values.difyHost | quote }}
+            enterpriseDomain: "enterprise.{{ .Values.difyHost }}"
           api:
             enabled: true
             resources:

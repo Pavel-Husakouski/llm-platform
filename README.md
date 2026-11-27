@@ -56,7 +56,7 @@ TARGET=kind` удаляет kind-кластер).
 | Langfuse   | http://HOST:30300               | http://localhost:13300              | admin@llm-platform.local, `make langfuse-password` |
 | LiteLLM    | http://HOST:30400/ui            | http://localhost:14000/ui           | admin, `make litellm-password` (master key)   |
 | n8n        | http://HOST:30500               | http://localhost:14500              | owner-аккаунт при первом входе                |
-| Dify       | http://HOST:30600               | http://localhost:14600              | admin при первом входе                        |
+| Dify       | http://console.HOST.nip.io:30600 | http://console.localhost:14600      | admin при первом входе (см. примечание ниже)  |
 | Embeddings | http://HOST:30180/health        | http://localhost:18180/health       | TEI `intfloat/multilingual-e5-base`, в LiteLLM alias `embed` |
 | ClickHouse | http://HOST:30123/play, :30900  | http://localhost:18123/play, :19000 | clickhouse, `make clickhouse-password`        |
 | Postgres   | postgres.platform:5432 (в кластере) | postgres.platform:5432 (в кластере) | роль `<name>`, пароль в `platform-postgres`   |
@@ -70,9 +70,12 @@ Langfuse пускает в UI только по адресу из `langfuseURL` 
 
 n8n и Dify **не** подключены к Keycloak: SSO (OIDC) в обоих — функция Enterprise-редакции
 (n8n к тому же требует HTTPS). Вход — по локальному аккаунту, который создаётся при первом
-открытии UI. Dify адресуется снаружи по `difyHost`/`difyPort` (их подставляет `make root`),
-а его секреты — по `difySecretKey`/`difyInnerApiKey`/`difyPostgresPassword`/
-`difyRedisPassword`, которые `make root` берёт из Secret `dify/dify` (создаёт `make secret`).
+открытии UI. Gateway Dify (Caddy) роутит по Host-заголовку, поэтому Dify живёт на поддоменах
+одного IP: вход в консоль — `console.<HOST>.nip.io` в k3s (клиент должен резолвить публичный
+DNS nip.io) и `console.localhost` в kind (`.localhost` резолвится в 127.0.0.1). Базовый домен
+и порт задают `difyHost`/`difyPort` (их подставляет `make root`), а секреты —
+`difySecretKey`/`difyInnerApiKey`/`difyPostgresPassword`/`difyRedisPassword`, которые
+`make root` берёт из Secret `dify/dify` (создаёт `make secret`).
 
 Плагин kubectl для выкаток тенантов (`kubectl argo rollouts get/promote/abort/retry`):
 
