@@ -22,7 +22,8 @@ spec:
           global:
             appSecretKey: {{ .Values.difySecretKey | quote }}
             innerApiKey: {{ .Values.difyInnerApiKey | quote }}
-            useTLS: false
+            # https в k3s (терминирует edge), http в kind. externalPort 443 -> порт в URL опущен.
+            useTLS: {{ .Values.difyUseTLS }}
             externalPort: {{ .Values.difyPort }}
             # Caddy gateway роутит по Host-заголовку: каждому сервису нужен свой поддомен,
             # иначе одинаковый хост даёт дубли site-адресов и Caddy падает (duplicate site

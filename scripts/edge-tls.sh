@@ -41,7 +41,7 @@ fi
 # он уже на trap-очистке.
 openssl req -new -newkey rsa:2048 -nodes -keyout "$tmp/tls.key" -out "$tmp/server.csr" \
   -subj "/CN=*.llm.internal"
-printf 'subjectAltName=DNS:*.llm.internal,DNS:llm.internal\n' > "$tmp/ext.cnf"
+printf 'subjectAltName=DNS:*.llm.internal,DNS:*.dify.llm.internal,DNS:llm.internal,DNS:dify.llm.internal\n' > "$tmp/ext.cnf"
 openssl x509 -req -in "$tmp/server.csr" \
   -CA "$local_ca/ca.crt" -CAkey "$local_ca/ca.key" \
   -set_serial "0x$(openssl rand -hex 8)" \

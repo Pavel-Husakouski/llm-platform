@@ -27,7 +27,7 @@ TOOLS_DIR      ?= $(HOME)/.local/bin
 REVISION       ?= main
 WAIT_TIMEOUT   ?= 900
 # Application платформы: make wait не ждёт Application тенантов.
-APPS           := llm-platform storage dns edge argo-rollouts prometheus clickhouse postgres langfuse litellm embeddings grafana keycloak n8n dify
+APPS           := llm-platform storage dns dns-cluster edge argo-rollouts prometheus clickhouse postgres langfuse litellm embeddings grafana keycloak n8n dify
 
 # make tenant NAME=agent NS=agent BUDGET=1 MODELS=deepseek-flash
 NS             ?= $(NAME)
@@ -39,16 +39,17 @@ MODELS         ?= deepseek-flash
 ifeq ($(TARGET),k3s)
 CONTEXT        := $(CLUSTER)
 URL            := http://$(HOST)
-ARGOCD_URL     := $(URL):30080
+ARGOCD_URL     := https://argocd.llm.internal
 PROMETHEUS_URL := $(URL):30090
-GRAFANA_URL    := $(URL):30030
-KEYCLOAK_URL   := $(URL):30040
-LANGFUSE_URL   := $(URL):30300
-LITELLM_URL    := $(URL):30400
+GRAFANA_URL    := https://grafana.llm.internal
+KEYCLOAK_URL   := http://keycloak.llm.internal
+LANGFUSE_URL   := https://langfuse.llm.internal
+LITELLM_URL    := https://litellm.llm.internal
 N8N_URL        := https://n8n.llm.internal
-DIFY_URL       := http://console.dify.llm.internal:30600
+DIFY_URL       := https://console.dify.llm.internal
 DIFY_HOST      := dify.llm.internal
-DIFY_PORT      := 30600
+DIFY_PORT      := 443
+DIFY_TLS       := true
 EMBEDDINGS_URL := $(URL):30180
 CLICKHOUSE_URL := $(URL):30123
 CLICKHOUSE_TCP := $(HOST):30900
@@ -69,6 +70,7 @@ N8N_URL        := $(URL):14500
 DIFY_URL       := http://console.localhost:14600
 DIFY_HOST      := localhost
 DIFY_PORT      := 14600
+DIFY_TLS       := false
 EMBEDDINGS_URL := $(URL):18180
 CLICKHOUSE_URL := $(URL):18123
 CLICKHOUSE_TCP := localhost:19000
@@ -186,6 +188,7 @@ root:
 	  -e 's#grafanaUrl: .*#grafanaUrl: $(GRAFANA_URL)#' \
 	  -e 's#difyHost: .*#difyHost: $(DIFY_HOST)#' \
 	  -e 's#difyPort: .*#difyPort: $(DIFY_PORT)#' \
+	  -e 's#difyUseTLS: .*#difyUseTLS: $(DIFY_TLS)#' \
 	  -e "s#difySecretKey: .*#difySecretKey: \"$$dify_secret\"#" \
 	  -e "s#difyInnerApiKey: .*#difyInnerApiKey: \"$$dify_inner\"#" \
 	  -e "s#difyPostgresPassword: .*#difyPostgresPassword: \"$$dify_pg\"#" \

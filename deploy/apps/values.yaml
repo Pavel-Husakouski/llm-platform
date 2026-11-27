@@ -17,6 +17,8 @@ grafanaUrl: http://localhost:13030
 # 127.0.0.1), в k3s make root подставляет <HOST>.nip.io (как langfuseURL).
 difyHost: localhost
 difyPort: 14600
+# Схема внешних URL Dify (https в k3s через edge, http в kind); make root подставляет по TARGET.
+difyUseTLS: false
 
 # Секреты Dify. Chart не умеет брать их из existingSecret (только литерал или
 # ExternalSecret-оператор), поэтому make root подставляет настоящие значения из Secret

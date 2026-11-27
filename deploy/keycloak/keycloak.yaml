@@ -85,9 +85,15 @@ spec:
                 secretKeyRef:
                   name: keycloak
                   key: KEYCLOAK_ADMIN_PASSWORD
-            # Платформа без TLS (как Argo CD server.insecure): включаем HTTP и не форсим https.
+            # Keycloak — issuer SSO остаётся на http (http://keycloak.llm.internal через edge),
+            # чтобы поды валидировали токены без доверия приватному CA. KC_HOSTNAME фиксирует
+            # issuer независимо от того, как дошли; proxy-headers=xforwarded — доверять X-Forwarded-*.
             - name: KC_HTTP_ENABLED
               value: "true"
+            - name: KC_HOSTNAME
+              value: "keycloak.llm.internal"
+            - name: KC_PROXY_HEADERS
+              value: "xforwarded"
             - name: KC_HOSTNAME_STRICT
               value: "false"
             - name: KC_HOSTNAME_STRICT_HTTPS
