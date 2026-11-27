@@ -32,9 +32,8 @@ spec:
         testFramework:
           enabled: false
         service:
-          type: NodePort
+          type: ClusterIP
           port: 3000
-          nodePort: 30030
         resources:
           requests: { cpu: 50m, memory: 128Mi }
           limits: { memory: 4Gi }

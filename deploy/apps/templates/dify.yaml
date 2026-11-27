@@ -11,8 +11,8 @@ spec:
   project: default
   # Chart dify не умеет брать SECRET_KEY/INNER_API_KEY/пароли БД из existingSecret — только
   # литерал или ExternalSecret-оператор. Поэтому 4 значения make root подставляет в root-app
-  # (valuesObject), как langfuseURL: их нет в git. PVC для файлового хранилища и NodePort на
-  # gateway chart не создаёт — их кладёт companion-источник deploy/dify (nodeport.yaml).
+  # (valuesObject), как langfuseURL: их нет в git. PVC для файлового хранилища chart не
+  # создаёт — его кладёт companion-источник deploy/dify (pvc.yaml).
   sources:
     - repoURL: https://langgenius.github.io/dify-helm
       chart: dify

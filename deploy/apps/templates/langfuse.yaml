@@ -51,8 +51,7 @@ spec:
                 name: langfuse-init
           web:
             service:
-              type: NodePort
-              nodePort: 30300
+              type: ClusterIP
             resources:
               requests: { cpu: 100m, memory: 512Mi }
               limits: { memory: 1536Mi }

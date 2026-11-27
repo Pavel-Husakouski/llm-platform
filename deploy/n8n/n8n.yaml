@@ -8,15 +8,14 @@ metadata:
   labels:
     app.kubernetes.io/name: n8n
 spec:
-  # NodePort: UI на <HOST>:30500 в k3s, на localhost:14500 в kind (extraPortMappings)
-  type: NodePort
+  # Наружу — через edge (https://n8n.llm.internal); NodePort убран.
+  type: ClusterIP
   selector:
     app.kubernetes.io/name: n8n
   ports:
     - name: http
       port: 5678
       targetPort: http
-      nodePort: 30500
 ---
 apiVersion: apps/v1
 kind: StatefulSet

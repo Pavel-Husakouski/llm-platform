@@ -10,15 +10,14 @@ metadata:
   labels:
     app.kubernetes.io/name: keycloak
 spec:
-  # NodePort: UI и issuer на <HOST>:30040 в k3s, на localhost:14040 в kind (extraPortMappings)
-  type: NodePort
+  # Наружу — через edge (http://keycloak.llm.internal); NodePort убран.
+  type: ClusterIP
   selector:
     app.kubernetes.io/name: keycloak
   ports:
     - name: http
       port: 8080
       targetPort: http
-      nodePort: 30040
 ---
 apiVersion: apps/v1
 kind: StatefulSet

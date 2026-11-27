@@ -4,6 +4,12 @@
 
 KUBECTL=${KUBECTL:-kubectl}
 
+# Внутренние https-сервисы (LiteLLM, Langfuse) подписаны приватным CA (.edge-tls/ca.crt),
+# которого нет в системном хранилище — curl по ним падал бы с unable to get local issuer.
+# Подменяем bundle только здесь (внешних https в этих скриптах нет).
+_ca_bundle="$(cd "$(dirname "$0")/.." && pwd)/.edge-tls/ca.crt"
+[ -f "$_ca_bundle" ] && export CURL_CA_BUNDLE="$_ca_bundle"
+
 tmp=$(mktemp -d)
 chmod 700 "$tmp"
 trap 'rm -rf "$tmp"' EXIT

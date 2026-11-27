@@ -83,15 +83,14 @@ metadata:
   labels:
     app.kubernetes.io/name: litellm
 spec:
-  # NodePort: UI на <HOST>:30400 в k3s, на localhost:14000 в kind (extraPortMappings)
-  type: NodePort
+  # Наружу — через edge (https://litellm.llm.internal); NodePort убран.
+  type: ClusterIP
   selector:
     app.kubernetes.io/name: litellm
   ports:
     - name: http
       port: 4000
       targetPort: http
-      nodePort: 30400
 ---
 apiVersion: apps/v1
 kind: StatefulSet

@@ -50,25 +50,25 @@ TARGET=kind` удаляет kind-кластер).
 
 | Что        | k3s (`HOST`)                    | kind                                | Вход                                          |
 |------------|---------------------------------|-------------------------------------|-----------------------------------------------|
-| Argo CD    | http://HOST:30080               | http://localhost:18080              | admin, `make argocd-password`                 |
+| Argo CD    | https://argocd.llm.internal      | — (port-forward)                   | admin, `make argocd-password`                 |
 | Prometheus | http://HOST:30090               | http://localhost:19090              |                                               |
-| Grafana    | http://HOST:30030               | http://localhost:13030              | admin, `make grafana-password`                |
-| Langfuse   | http://HOST:30300               | http://localhost:13300              | admin@llm-platform.local, `make langfuse-password` |
-| LiteLLM    | http://HOST:30400/ui            | http://localhost:14000/ui           | admin, `make litellm-password` (master key)   |
-| n8n        | https://n8n.llm.internal       | http://localhost:14500              | owner-аккаунт при первом входе (k3s — HTTPS через edge) |
-| Dify       | http://console.dify.llm.internal:30600 | http://console.localhost:14600      | admin при первом входе (см. примечание ниже)  |
+| Grafana    | https://grafana.llm.internal     | — (port-forward)                   | admin, `make grafana-password`                |
+| Langfuse   | https://langfuse.llm.internal    | — (port-forward)                   | admin@llm-platform.local, `make langfuse-password` |
+| LiteLLM    | https://litellm.llm.internal     | — (port-forward)                   | admin, `make litellm-password` (master key)   |
+| n8n        | https://n8n.llm.internal         | — (port-forward)                   | owner-аккаунт при первом входе                |
+| Dify       | https://console.dify.llm.internal | — (port-forward)                  | admin при первом входе (см. примечание ниже)  |
 | Embeddings | http://HOST:30180/health        | http://localhost:18180/health       | TEI `intfloat/multilingual-e5-base`, в LiteLLM alias `embed` |
 | ClickHouse | http://HOST:30123/play, :30900  | http://localhost:18123/play, :19000 | clickhouse, `make clickhouse-password`        |
 | Postgres   | postgres.platform:5432 (в кластере) | postgres.platform:5432 (в кластере) | роль `<name>`, пароль в `platform-postgres`   |
 
-В k3s HTTPS (пока только n8n) даёт `edge` (`deploy/edge`): nginx на hostPort 80/443 терминирует
-TLS по wildcard `*.llm.internal` и проксирует по Host-заголовку — `https://n8n.llm.internal`.
-Сертификат выпускает приватный CA (`make edge-tls`; Let's Encrypt для `.internal` невозможен),
-его корень `ca.crt` надо один раз установить как доверенный на каждом устройстве LAN, иначе
-браузер предупредит (шифрование работает и без этого). Остальные сервисы пока на NodePort без
-TLS — переезд на поддомены отложен. Для API тенантов зарезервированы NodePort 30000–30009; в
-kind они проброшены на localhost:13000–13009, потому что порты kind задаются только при
-создании кластера.
+В k3s HTTPS даёт `edge` (`deploy/edge`): nginx на hostPort 80/443 терминирует TLS по wildcard
+`*.llm.internal`/`*.dify.llm.internal` и проксирует по Host-заголовку. Сертификат выпускает
+приватный CA (`make edge-tls`; Let's Encrypt для `.internal` невозможен), его корень `ca.crt`
+надо один раз установить как доверенный на каждом устройстве LAN, иначе браузер предупредит
+(шифрование работает и без этого). NodePort-ы пользовательских сервисов сняты — наружу только
+через edge; Keycloak-issuer SSO остался http (`http://keycloak.llm.internal`). Для API тенантов
+зарезервированы NodePort 30000–30009; в kind они проброшены на localhost:13000–13009 (у kind
+edge нет — пользовательские сервисы снаружи через port-forward).
 
 Langfuse пускает в UI только по адресу из `langfuseURL` (NEXTAUTH_URL), его подставляет
 `make root` по `TARGET`.

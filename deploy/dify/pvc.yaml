@@ -1,0 +1,13 @@
+# Companion для chart dify (deploy/apps/templates/dify.yaml): PVC для файлового хранилища
+# (uploads, RAG-документы). Chart сам его НЕ создаёт — деплойменты монтируют PVC с именем
+# dify-backend-pvc. AccessModes ReadWriteOnce достаточно: узлы один, api и worker живут на нём.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dify-backend-pvc
+spec:
+  storageClassName: platform
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
