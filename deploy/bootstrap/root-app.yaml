@@ -22,6 +22,7 @@ spec:
         grafanaUrl: http://localhost:13030
         difyHost: localhost
         difyPort: 14600
+        difyUseTLS: false
         difySecretKey: CHANGE_ME
         difyInnerApiKey: CHANGE_ME
         difyPostgresPassword: CHANGE_ME
