@@ -83,6 +83,12 @@ spec:
             enabled: false
           enterpriseRbac:
             enabled: false
+          # plugin_manager — тоже enterprise-компонент: читает enterprise.sys_settings из БД
+          # enterprise, которую создаёт выключенный dify-ee-enterprise. Без него менеджер падает
+          # в CrashLoop (relation "sys_settings" does not exist). Исполнение плагинов (daemon/
+          # connector) не трогаем — оно работает.
+          plugin_manager:
+            enabled: false
           # RAG-etlType = dify: отдельный Unstructured-сервис не нужен.
           unstructured:
             enabled: false
