@@ -149,20 +149,17 @@ metadata:
   labels:
     app.kubernetes.io/name: clickhouse
 spec:
-  # NodePort: HTTP и play на :30123, clickhouse-client на :30900 (в kind localhost:18123, :19000).
-  # В кластере — http://clickhouse.platform:8123.
-  type: NodePort
+  # HTTP/play — через edge (https://clickhouse.llm.internal), native — hostPort 9000 на узле.
+  type: ClusterIP
   selector:
     app.kubernetes.io/name: clickhouse
   ports:
     - name: http
       port: 8123
       targetPort: http
-      nodePort: 30123
     - name: native
       port: 9000
       targetPort: native
-      nodePort: 30900
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -210,6 +207,7 @@ spec:
               containerPort: 8123
             - name: native
               containerPort: 9000
+              hostPort: 9000
           readinessProbe:
             httpGet:
               path: /ping

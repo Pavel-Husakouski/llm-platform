@@ -51,15 +51,15 @@ TARGET=kind` удаляет kind-кластер).
 | Что        | k3s (`HOST`)                    | kind                                | Вход                                          |
 |------------|---------------------------------|-------------------------------------|-----------------------------------------------|
 | Argo CD    | https://argocd.llm.internal      | — (port-forward)                   | admin, `make argocd-password`                 |
-| Prometheus | http://HOST:30090               | http://localhost:19090              |                                               |
+| Prometheus | https://prometheus.llm.internal  | — (port-forward)                   |                                               |
 | Grafana    | https://grafana.llm.internal     | — (port-forward)                   | admin, `make grafana-password`                |
 | Langfuse   | https://langfuse.llm.internal    | — (port-forward)                   | admin@llm-platform.local, `make langfuse-password` |
 | LiteLLM    | https://litellm.llm.internal     | — (port-forward)                   | admin, `make litellm-password` (master key)   |
 | n8n        | https://n8n.llm.internal         | — (port-forward)                   | owner-аккаунт при первом входе                |
 | Dify       | https://console.dify.llm.internal | — (port-forward)                  | admin при первом входе (см. примечание ниже)  |
-| Embeddings | http://HOST:30180/health        | http://localhost:18180/health       | TEI `intfloat/multilingual-e5-base`, в LiteLLM alias `embed` |
-| ClickHouse | http://HOST:30123/play, :30900  | http://localhost:18123/play, :19000 | clickhouse, `make clickhouse-password`        |
-| Postgres   | postgres.platform:5432 (в кластере) | postgres.platform:5432 (в кластере) | роль `<name>`, пароль в `platform-postgres`   |
+| Embeddings | https://embeddings.llm.internal/health | — (port-forward)              | TEI `intfloat/multilingual-e5-base`, в LiteLLM alias `embed` |
+| ClickHouse | https://clickhouse.llm.internal/play, native clickhouse.llm.internal:9000 | — (port-forward) | clickhouse, `make clickhouse-password` |
+| Postgres   | postgres.llm.internal:5432 (LAN), postgres.platform:5432 (в кластере) | — (port-forward) | роль `<name>`, пароль в `platform-postgres`   |
 
 В k3s HTTPS даёт `edge` (`deploy/edge`): nginx на hostPort 80/443 терминирует TLS по wildcard
 `*.llm.internal`/`*.dify.llm.internal` и проксирует по Host-заголовку. Сертификат выпускает

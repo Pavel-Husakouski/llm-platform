@@ -40,7 +40,7 @@ ifeq ($(TARGET),k3s)
 CONTEXT        := $(CLUSTER)
 URL            := http://$(HOST)
 ARGOCD_URL     := https://argocd.llm.internal
-PROMETHEUS_URL := $(URL):30090
+PROMETHEUS_URL := https://prometheus.llm.internal
 GRAFANA_URL    := https://grafana.llm.internal
 KEYCLOAK_URL   := http://keycloak.llm.internal
 LANGFUSE_URL   := https://langfuse.llm.internal
@@ -50,10 +50,10 @@ DIFY_URL       := https://console.dify.llm.internal
 DIFY_HOST      := dify.llm.internal
 DIFY_PORT      := 443
 DIFY_TLS       := true
-EMBEDDINGS_URL := $(URL):30180
-CLICKHOUSE_URL := $(URL):30123
-CLICKHOUSE_TCP := $(HOST):30900
-POSTGRES_TCP   := $(HOST):30432
+EMBEDDINGS_URL := https://embeddings.llm.internal
+CLICKHOUSE_URL := https://clickhouse.llm.internal
+CLICKHOUSE_TCP := $(HOST):9000
+POSTGRES_TCP   := $(HOST):5432
 TENANT_PORTS   := $(HOST):30000-30009
 # Скрипты кладут бэкап секретов на хост по ssh и восстанавливают из него (scripts/lib.sh).
 SECRETS_BACKUP := SECRETS_SSH=$(SSH) SECRETS_DIR=$(STORAGE_DIR)/secrets
@@ -231,7 +231,7 @@ status:
 	@echo "n8n:        $(N8N_URL) (owner-аккаунт при первом входе; SSO — Enterprise)"
 	@echo "Dify:       $(DIFY_URL) (admin при первом входе; SSO — Enterprise)"
 	@echo "ClickHouse: $(CLICKHOUSE_URL)/play, native $(CLICKHOUSE_TCP) (clickhouse, make clickhouse-password)"
-	@echo "Postgres:   postgres.platform:5432, NodePort $(POSTGRES_TCP) (БД тенантов, make postgres-password)"
+	@echo "Postgres:   postgres.platform:5432 (в кластере), $(POSTGRES_TCP) из LAN (БД тенантов, make postgres-password)"
 	@echo "Тенанты:    $(TENANT_PORTS)"
 
 # Остановить проект (tenant=<name>): выключает auto-sync его записей в Argo CD и гасит поды в

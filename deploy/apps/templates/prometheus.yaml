@@ -31,9 +31,8 @@ spec:
           global:
             scrape_interval: 15s
           service:
-            type: NodePort
+            type: ClusterIP
             servicePort: 9090
-            nodePort: 30090
         # Метрики apiserver (~42 тыс. рядов за scrape) и kubelet стенду не нужны, а их сбор —
         # главная фоновая нагрузка на apiserver. CPU и память подов дают метрики cAdvisor.
         scrapeConfigs:

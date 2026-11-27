@@ -18,14 +18,14 @@ metadata:
   labels:
     app.kubernetes.io/name: postgres
 spec:
-  type: NodePort
+  # В кластере — postgres.platform:5432; из LAN — postgres.llm.internal:5432 (hostPort на поде).
+  type: ClusterIP
   selector:
     app.kubernetes.io/name: postgres
   ports:
     - name: postgres
       port: 5432
       targetPort: postgres
-      nodePort: 30432
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -69,6 +69,7 @@ spec:
           ports:
             - name: postgres
               containerPort: 5432
+              hostPort: 5432
           # TCP вместо exec pg_isready: exec-проба — новый процесс через containerd.
           readinessProbe:
             tcpSocket:
